@@ -1,0 +1,43 @@
+## Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+
+## Environments
+.env
+.venv/
+env/
+venv/
+.conda/
+
+## Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+## Data (collected data stays outside git, in Docker volume)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+## Logs (generated at runtime)
+logs/*
+!logs/.gitkeep
+
+## macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+## Editor
+.vscode/
+.idea/
+*.swp
+*.swo
