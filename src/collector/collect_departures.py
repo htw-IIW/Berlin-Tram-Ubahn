@@ -40,7 +40,8 @@ def fetch_tram_stop_ids(es: Elasticsearch) -> list[str]:
     try:
         resp = es.search(
             index=ES_INDEX_STOPS,
-            body={"query": {"match_all": {}}, "_source": ["stop_id"]},
+            query={"match_all": {}},
+            source=["stop_id"],
             size=2000,
         )
         return [hit["_source"]["stop_id"] for hit in resp["hits"]["hits"]]
@@ -94,11 +95,18 @@ def process_departures(departures: list[dict]) -> tuple[list[dict], list[dict]]:
     return dep_docs, dis_docs
 
 
-def bulk_index(es: Elasticsearch, index: str, docs: list[dict]) -> int:
-    """Indexiert eine Liste von Dokumenten via Bulk-API. Gibt Anzahl Erfolge zurück."""
+def bulk_index(es: Elasticsearch, index: str, docs: list[dict], id_field: str | None = None) -> int:
+    """Indexiert eine Liste von Dokumenten via Bulk-API. Gibt Anzahl Erfolge zurück.
+    id_field: wenn gesetzt, wird dieses Feld aus dem Dokument als ES _id verwendet (Deduplication)."""
     if not docs:
         return 0
-    actions = [{"_index": index, "_source": doc} for doc in docs]
+    actions = []
+    for doc in docs:
+        source = {k: v for k, v in doc.items() if k != id_field}
+        action = {"_index": index, "_source": source}
+        if id_field:
+            action["_id"] = doc.get(id_field)
+        actions.append(action)
     success, _ = helpers.bulk(es, actions, stats_only=True)
     return success
 
@@ -127,7 +135,7 @@ def collect_once(es: Elasticsearch, stop_ids: list[str]) -> dict:
         time.sleep(0.05)  # 50ms zwischen Anfragen
 
     n_deps = bulk_index(es, ES_INDEX_DEPARTURES,  all_deps)
-    n_dis  = bulk_index(es, ES_INDEX_DISRUPTIONS, all_dis)
+    n_dis  = bulk_index(es, ES_INDEX_DISRUPTIONS, all_dis, id_field="_doc_id")
 
     return {
         "departures_indexed": n_deps,

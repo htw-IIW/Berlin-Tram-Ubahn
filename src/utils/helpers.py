@@ -3,6 +3,7 @@
 Parsing and enrichment helpers for raw BVG API responses.
 """
 
+import hashlib
 from datetime import datetime, timezone
 
 
@@ -63,21 +64,31 @@ def enrich_remark(remark: dict, dep: dict) -> dict:
     """
     Convert one BVG API remark (warning/status) to an Elasticsearch disruption document.
     dep is the parent departure, used to attach line/stop context.
+    _doc_id is a deterministic hash used as the ES _id to deduplicate across collection rounds.
     """
     stop = dep.get("stop") or {}
     line = dep.get("line") or {}
 
+    trip_id    = dep.get("tripId")
+    stop_id    = stop.get("id")
+    remark_code = remark.get("code")
+    valid_from  = remark.get("validFrom")
+
+    key = f"{trip_id}|{stop_id}|{remark_code}|{valid_from}"
+    doc_id = hashlib.md5(key.encode()).hexdigest()
+
     return {
+        "_doc_id":      doc_id,
         "collected_at": datetime.now(timezone.utc).isoformat(),
-        "trip_id":      dep.get("tripId"),
+        "trip_id":      trip_id,
         "line_name":    line.get("name"),
         "direction":    dep.get("direction"),
-        "stop_id":      stop.get("id"),
+        "stop_id":      stop_id,
         "stop_name":    stop.get("name"),
         "remark_type":  remark.get("type"),
-        "remark_code":  remark.get("code"),
+        "remark_code":  remark_code,
         "summary":      remark.get("summary"),
         "text":         remark.get("text"),
-        "valid_from":   _parse_dt(remark.get("validFrom")),
+        "valid_from":   _parse_dt(valid_from),
         "valid_until":  _parse_dt(remark.get("validUntil")),
     }

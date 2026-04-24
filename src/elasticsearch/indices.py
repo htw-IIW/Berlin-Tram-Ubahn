@@ -5,6 +5,7 @@ Beim ersten Start einmalig ausführen: python -m src.elasticsearch.indices
 """
 
 from elasticsearch import Elasticsearch
+
 from config.settings import ES_HOST, ES_USER, ES_PASSWORD
 from config.settings import ES_INDEX_DEPARTURES, ES_INDEX_DISRUPTIONS, ES_INDEX_STOPS
 
@@ -90,7 +91,7 @@ def create_indices(es: Elasticsearch, recreate: bool = False) -> None:
             else:
                 print(f"  Existiert bereits (übersprungen): {index_name}")
                 continue
-        es.indices.create(index=index_name, body=mapping)
+        es.indices.create(index=index_name, mappings=mapping["mappings"])
         print(f"  Erstellt: {index_name}")
 
 
