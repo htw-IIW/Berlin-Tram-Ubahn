@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 def fetch_stops_nearby(lat: float, lon: float, distance: int = 6000) -> list[dict]:
     resp = requests.get(
         f"{BVG_API_BASE}/stops/nearby",
-        params={"latitude": lat, "longitude": lon, "distance": distance, "results": 500},
+        params={"latitude": lat, "longitude": lon, "distance": distance, "results": 100},
         timeout=15,
     )
     resp.raise_for_status()
