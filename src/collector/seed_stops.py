@@ -24,15 +24,16 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def fetch_stops_nearby(lat: float, lon: float, distance: int = 6000) -> list[dict]:
+def fetch_stops_for_line(line_name: str, config: TransitConfig) -> list[dict]:
     resp = requests.get(
-        f"{BVG_API_BASE}/stops/nearby",
-        params={"latitude": lat, "longitude": lon, "distance": distance, "results": 100},
+        f"{BVG_API_BASE}/locations",
+        params={"query": line_name, "results": 50, "stops": "true", "poi": "false", "addresses": "false"},
         timeout=15,
     )
     resp.raise_for_status()
     data = resp.json()
-    return data if isinstance(data, list) else data.get("stops", [])
+    stops = data if isinstance(data, list) else data.get("stops", [])
+    return [s for s in stops if is_relevant_stop(s, config)]
 
 
 def is_relevant_stop(stop: dict, config: TransitConfig) -> bool:
@@ -62,26 +63,37 @@ def stop_to_doc(stop: dict) -> dict:
 
 
 def seed_stops(es, config: TransitConfig) -> None:
-    seen: set[str] = set()
     docs: list[dict] = []
 
     log.info(f"[{config.display_name}] Lade Haltestellen von der BVG-API...")
 
-    for lat, lon in config.grid_points:
+    # stop_id → doc; built incrementally so duplicate stops across lines are merged
+    stops_by_id: dict[str, dict] = {}
+
+    for line in config.lines:
         try:
-            stops = fetch_stops_nearby(lat, lon)
-            relevant = [s for s in stops if is_relevant_stop(s, config)]
+            relevant = fetch_stops_for_line(line, config)
             new = 0
             for stop in relevant:
                 sid = stop.get("id")
-                if sid and sid not in seen:
-                    seen.add(sid)
-                    docs.append(stop_to_doc(stop))
+                if not sid:
+                    continue
+                if sid not in stops_by_id:
+                    stops_by_id[sid] = stop_to_doc(stop)
                     new += 1
-            log.info(f"  ({lat:.3f}, {lon:.3f}): {len(relevant)} Haltestellen, {new} neu")
+                else:
+                    # merge any additional line names returned for this stop
+                    existing_lines = stops_by_id[sid]["lines"]
+                    for entry in stop.get("lines") or []:
+                        name = entry.get("name")
+                        if name and name not in existing_lines:
+                            existing_lines.append(name)
+            log.info(f"  Linie {line}: {len(relevant)} Haltestellen, {new} neu")
         except requests.exceptions.RequestException as e:
-            log.warning(f"  API-Fehler bei ({lat}, {lon}): {e}")
+            log.warning(f"  API-Fehler bei Linie {line}: {e}")
         time.sleep(0.3)
+
+    docs = list(stops_by_id.values())
 
     log.info(f"\n[{config.display_name}] {len(docs)} eindeutige Haltestellen gesammelt.")
 
