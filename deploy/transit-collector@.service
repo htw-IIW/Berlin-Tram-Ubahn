@@ -1,0 +1,28 @@
+# deploy/transit-collector@.service
+# Systemd template service for BVG transit data collection.
+# %i is replaced with the instance name at enable/start time.
+#
+# Installed by deploy/install_services.sh — do not edit directly.
+# Enable both networks:
+#   sudo systemctl enable transit-collector@tram transit-collector@ubahn
+#   sudo systemctl start  transit-collector@tram transit-collector@ubahn
+
+[Unit]
+Description=BVG %i Departure Collector
+Documentation=https://github.com/valeriaamgg/berlin-tram-analysis
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__REPO_DIR__
+ExecStart=__PYTHON__ -m src.collector.collect_departures --mode %i
+StandardOutput=append:__REPO_DIR__/logs/collector-%i.log
+StandardError=append:__REPO_DIR__/logs/collector-%i.log
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

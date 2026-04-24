@@ -41,8 +41,11 @@ pip install -r requirements.txt
 # 5. Elasticsearch + Kibana
 docker-compose up -d
 # Warten bis healthy (~60s), dann:
-python -m src.elasticsearch.indices
-python -m src.collector.seed_stops
+python -m src.elasticsearch.indices --mode tram
+python -m src.elasticsearch.indices --mode ubahn
+python -m src.elasticsearch.kibana_setup
+python -m src.collector.seed_stops --mode tram
+python -m src.collector.seed_stops --mode ubahn
 
 # 6. Systemd-Dienst (Autostart + Crash-Recovery)
 bash deploy/install_services.sh
@@ -61,14 +64,17 @@ sudo tailscale up
 # Status aller Collector + Dokument-Zähler
 bash berlin-tram-analysis/scripts/collector_status.sh
 
-# Systemd-Dienst-Status (mit letzten Logs)
-sudo systemctl status tram-collector
+# Systemd-Dienst-Status
+sudo systemctl status transit-collector@tram
+sudo systemctl status transit-collector@ubahn
 
-# Live-Log
-tail -f berlin-tram-analysis/logs/collector.log
+# Live-Logs
+tail -f berlin-tram-analysis/logs/collector-tram.log
+tail -f berlin-tram-analysis/logs/collector-ubahn.log
 
-# Collector neu starten
-sudo systemctl restart tram-collector
+# Einzelnen Collector neu starten
+sudo systemctl restart transit-collector@tram
+sudo systemctl restart transit-collector@ubahn
 
 # Docker-Container Status
 docker-compose -f berlin-tram-analysis/docker-compose.yml ps
@@ -92,7 +98,7 @@ http://tram-pi:5601
 
 ## Neustart-Verhalten
 
-Der systemd-Dienst `tram-collector` startet automatisch:
+Die systemd-Dienste `transit-collector@tram` und `transit-collector@ubahn` starten automatisch:
 - beim Pi-Booten
 - nach einem Absturz (nach 30s)
 - nach Stromausfall

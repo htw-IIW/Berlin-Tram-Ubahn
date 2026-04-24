@@ -1,67 +1,72 @@
 #!/usr/bin/env bash
 # deploy/install_services.sh
-# Installs the tram-collector systemd service on Raspberry Pi.
-# Run once after cloning the repo:  bash deploy/install_services.sh
+# Installs one systemd service instance per transit network on Raspberry Pi.
+# Run once after cloning:  bash deploy/install_services.sh
 #
-# What it does:
-#   1. Detects the repo directory and the conda-env Python
-#   2. Fills placeholders in deploy/tram-collector.service
-#   3. Installs + enables + starts the systemd unit
+# Creates:
+#   /etc/systemd/system/transit-collector@tram.service
+#   /etc/systemd/system/transit-collector@ubahn.service
 #
-# After this, the collector:
-#   - starts automatically on every Pi boot
-#   - restarts itself after a crash (30s delay)
-#   - writes logs to logs/collector.log (same as the bash scripts)
+# Both services start automatically on boot and restart after crashes (30s).
+# Logs: logs/collector-tram.log  and  logs/collector-ubahn.log
 
 set -euo pipefail
 
-SERVICE_NAME="tram-collector"
+TEMPLATE_NAME="transit-collector@"
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-TEMPLATE="$REPO_DIR/deploy/tram-collector.service"
-UNIT_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+TEMPLATE="$REPO_DIR/deploy/${TEMPLATE_NAME}.service"
 
-# ── Detect current user ───────────────────────────────────────────────────────
+# ── Detect user ───────────────────────────────────────────────────────────────
 CURRENT_USER="$(whoami)"
 
-# ── Detect Python (prefer conda env, fall back to system python3) ─────────────
+# ── Detect Python (conda env preferred, system python3 as fallback) ───────────
 CONDA_PYTHON="$HOME/miniforge3/envs/tram-analysis/bin/python"
 if [ -x "$CONDA_PYTHON" ]; then
     PYTHON="$CONDA_PYTHON"
 elif command -v conda &>/dev/null; then
-    PYTHON="$(conda run -n tram-analysis which python 2>/dev/null)" || PYTHON="python3"
+    PYTHON="$(conda run -n tram-analysis which python 2>/dev/null)" || PYTHON="$(command -v python3)"
 else
     PYTHON="$(command -v python3)"
 fi
 
-echo "── Installing $SERVICE_NAME ───────────────────────────────────────────"
+echo "── Installing transit-collector services ──────────────────────────────"
 echo "  Repo:   $REPO_DIR"
 echo "  User:   $CURRENT_USER"
 echo "  Python: $PYTHON"
 echo ""
 
-# ── Make sure logs dir exists ─────────────────────────────────────────────────
 mkdir -p "$REPO_DIR/logs"
 
-# ── Fill template placeholders and write unit file ────────────────────────────
+# ── Install the template unit file ───────────────────────────────────────────
+UNIT_DEST="/etc/systemd/system/${TEMPLATE_NAME}.service"
 sed \
     -e "s|__REPO_DIR__|$REPO_DIR|g" \
     -e "s|__USER__|$CURRENT_USER|g" \
     -e "s|__PYTHON__|$PYTHON|g" \
     "$TEMPLATE" \
-    | sudo tee "$UNIT_FILE" > /dev/null
+    | sudo tee "$UNIT_DEST" > /dev/null
+echo "  Template installed: $UNIT_DEST"
 
-echo "  Unit file written to $UNIT_FILE"
-
-# ── Enable and start ──────────────────────────────────────────────────────────
 sudo systemctl daemon-reload
-sudo systemctl enable "$SERVICE_NAME"
-sudo systemctl restart "$SERVICE_NAME"
+
+# ── Enable and start one instance per network ─────────────────────────────────
+for MODE in tram ubahn; do
+    INSTANCE="transit-collector@${MODE}"
+    sudo systemctl enable "$INSTANCE"
+    sudo systemctl restart "$INSTANCE"
+    echo "  ✅  $INSTANCE enabled and started"
+done
 
 echo ""
-echo "Done. Collector is running as a systemd service."
+echo "Done. Both collectors are running."
 echo ""
-echo "Useful commands:"
-echo "  sudo systemctl status $SERVICE_NAME"
-echo "  sudo systemctl restart $SERVICE_NAME"
-echo "  sudo journalctl -u $SERVICE_NAME -f"
-echo "  tail -f $REPO_DIR/logs/collector.log"
+echo "Status:"
+echo "  sudo systemctl status transit-collector@tram"
+echo "  sudo systemctl status transit-collector@ubahn"
+echo ""
+echo "Logs:"
+echo "  tail -f $REPO_DIR/logs/collector-tram.log"
+echo "  tail -f $REPO_DIR/logs/collector-ubahn.log"
+echo ""
+echo "Restart a single collector:"
+echo "  sudo systemctl restart transit-collector@tram"
