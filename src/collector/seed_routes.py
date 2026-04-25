@@ -1,19 +1,19 @@
 # src/collector/seed_routes.py
-# Builds the ordered stop sequence for every line in a transit network
-# and indexes one document per line into the routes index.
+# Reconstructs the ordered stop sequence for every line from already-collected
+# departure data in Elasticsearch — no BVG API calls required.
 #
-# Run once (after seed_stops):
+# Run after enough departure data has been collected (stop_sequence must be present):
 #   python -m src.collector.seed_routes --mode tram
 #   python -m src.collector.seed_routes --mode ubahn
 
 import sys
-import time
 import logging
 import argparse
-import requests
+from collections import defaultdict
+from elasticsearch import Elasticsearch
 
 sys.path.insert(0, ".")
-from config.settings import BVG_API_BASE, TransitConfig, CONFIGS
+from config.settings import TransitConfig, CONFIGS
 from src.elasticsearch.indices import get_client
 
 logging.basicConfig(
@@ -24,92 +24,95 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def resolve_line_id(line_name: str) -> str | None:
+def fetch_departures_with_sequence(es: Elasticsearch, config: TransitConfig) -> list[dict]:
     """
-    Find the HAFAS line ID for a given line name by searching /locations
-    and inspecting the lines arrays of returned stops.
-    Returns the first matching line ID, or None if not found.
+    Return all departure documents that carry a stop_sequence value.
+    Only the fields needed for route reconstruction are fetched.
     """
-    resp = requests.get(
-        f"{BVG_API_BASE}/locations",
-        params={"query": line_name, "results": 50, "stops": "true", "poi": "false", "addresses": "false"},
-        timeout=15,
+    resp = es.search(
+        index=config.index_departures,
+        query={"exists": {"field": "stop_sequence"}},
+        source=["line_name", "trip_id", "stop_id", "stop_name", "stop_sequence", "stop_location"],
+        size=10000,
     )
-    resp.raise_for_status()
-    data = resp.json()
-    locations = data if isinstance(data, list) else data.get("stops", [])
-
-    for stop in locations:
-        for line in stop.get("lines") or []:
-            if line.get("name") == line_name and line.get("id"):
-                return line["id"]
-    return None
+    total = resp["hits"]["total"]["value"]
+    if total > 10000:
+        log.warning(
+            f"  Index enthält {total} passende Dokumente, aber es werden nur die ersten "
+            f"10 000 geladen. Ggf. erneut ausführen wenn mehr Daten gesammelt wurden."
+        )
+    return [hit["_source"] for hit in resp["hits"]["hits"]]
 
 
-def fetch_route_stops(line_id: str) -> list[dict]:
-    """Fetch the ordered stop list for a line from /lines/{id}/stops."""
-    resp = requests.get(
-        f"{BVG_API_BASE}/lines/{line_id}/stops",
-        timeout=15,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    return data if isinstance(data, list) else data.get("stops", [])
+def build_routes(docs: list[dict]) -> dict[str, dict]:
+    """
+    Group docs by line_name → trip_id → stop_sequence and reconstruct one
+    canonical route per line by picking the trip with the most unique stops.
+
+    Returns {line_name: route_doc} where route_doc is ready to index into ES.
+    """
+    # line_name → trip_id → stop_sequence → stop entry
+    # Keying the inner dict by stop_sequence deduplicates repeated observations
+    # of the same stop within one trip across multiple collection rounds.
+    by_line: dict[str, dict[str, dict[int, dict]]] = defaultdict(lambda: defaultdict(dict))
+
+    for doc in docs:
+        line_name     = doc.get("line_name")
+        trip_id       = doc.get("trip_id")
+        stop_sequence = doc.get("stop_sequence")
+
+        if not (line_name and trip_id and stop_sequence is not None):
+            continue
+
+        by_line[line_name][trip_id][stop_sequence] = {
+            "stop_id":       doc.get("stop_id"),
+            "name":          doc.get("stop_name"),
+            "stop_sequence": stop_sequence,
+            "location":      doc.get("stop_location"),
+        }
+
+    routes: dict[str, dict] = {}
+    for line_name, trips in by_line.items():
+        # The trip with the highest number of unique stops is the best proxy
+        # for the full route (short-turn trips would have fewer stops).
+        best_stops = max(trips.values(), key=len)
+        stops = sorted(best_stops.values(), key=lambda s: s["stop_sequence"])
+        routes[line_name] = {
+            "line_name":  line_name,
+            "stop_count": len(stops),
+            "stops":      stops,
+        }
+
+    return routes
 
 
-def build_stop_entry(raw: dict, sequence: int) -> dict:
-    """Convert one raw stop from the route response to an ES nested object."""
-    loc = (raw.get("location") or {})
-    geo = None
-    if loc.get("latitude") and loc.get("longitude"):
-        geo = {"lat": loc["latitude"], "lon": loc["longitude"]}
+def seed_routes(es: Elasticsearch, config: TransitConfig) -> None:
+    log.info(f"[{config.display_name}] Rekonstruiere Routen aus '{config.index_departures}'...")
 
-    # prefer an explicit stop_sequence from the API; fall back to positional index
-    stop_sequence = raw.get("stop_sequence") or raw.get("stopSequence") or sequence
+    docs = fetch_departures_with_sequence(es, config)
+    log.info(f"  {len(docs)} Abfahrtsdokumente mit stop_sequence geladen.")
 
-    return {
-        "stop_id":       raw.get("id"),
-        "name":          raw.get("name"),
-        "stop_sequence": stop_sequence,
-        "location":      geo,
-    }
+    if not docs:
+        log.warning(
+            "  Keine Dokumente mit stop_sequence gefunden. "
+            "Stelle sicher dass der Collector bereits Daten gesammelt hat."
+        )
+        return
 
+    routes = build_routes(docs)
+    log.info(f"  {len(routes)} Linien rekonstruiert — indexiere nach '{config.index_routes}'...")
 
-def seed_routes(es, config: TransitConfig) -> None:
-    log.info(f"[{config.display_name}] Lade Linienrouten von der BVG-API...")
-    indexed = 0
+    for line_name, route_doc in sorted(routes.items()):
+        es.index(index=config.index_routes, id=line_name, document=route_doc)
+        log.info(f"  {line_name}: {route_doc['stop_count']} Haltestellen")
 
-    for line_name in config.lines:
-        try:
-            line_id = resolve_line_id(line_name)
-            if not line_id:
-                log.warning(f"  {line_name}: keine Linien-ID gefunden — übersprungen")
-                time.sleep(0.3)
-                continue
-
-            raw_stops = fetch_route_stops(line_id)
-            stops = [build_stop_entry(s, i) for i, s in enumerate(raw_stops)]
-
-            doc = {"line_name": line_name, "stops": stops}
-            es.index(index=config.index_routes, id=line_name, document=doc)
-
-            log.info(f"  {line_name}: {len(stops)} Haltestellen indexiert (ID: {line_id})")
-            indexed += 1
-
-        except requests.exceptions.RequestException as e:
-            log.warning(f"  {line_name}: API-Fehler — {e}")
-        except Exception as e:
-            log.warning(f"  {line_name}: Fehler — {e}")
-
-        time.sleep(0.3)
-
-    log.info(f"\n[{config.display_name}] {indexed}/{len(config.lines)} Linienrouten indexiert.")
+    log.info(f"\n[{config.display_name}] Fertig. {len(routes)} Routen in '{config.index_routes}' gespeichert.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="BVG Route Seeder")
+    parser = argparse.ArgumentParser(description="BVG Route Reconstructor")
     parser.add_argument("--mode", choices=list(CONFIGS), required=True,
-                        help="Transit network to seed routes for (tram | ubahn)")
+                        help="Transit network to reconstruct routes for (tram | ubahn)")
     args = parser.parse_args()
 
     client = get_client()
