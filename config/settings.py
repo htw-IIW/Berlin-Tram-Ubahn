@@ -17,6 +17,7 @@ class TransitConfig:
     index_departures: str
     index_disruptions: str
     index_stops: str
+    index_routes: str
     grid_points: tuple[tuple[float, float], ...]   # (lat, lon) for stop discovery
 
     @property
@@ -54,6 +55,7 @@ TRAM_CONFIG = TransitConfig(
     index_departures="tram-departures",
     index_disruptions="tram-disruptions",
     index_stops="tram-stops",
+    index_routes="tram-routes",
     # 12-point grid covering Berlin's eastern tram network (6 km radius each)
     grid_points=(
         (52.5200, 13.4050),   # Mitte / Hackescher Markt
@@ -78,6 +80,7 @@ UBAHN_CONFIG = TransitConfig(
     index_departures="ubahn-departures",
     index_disruptions="ubahn-disruptions",
     index_stops="ubahn-stops",
+    index_routes="ubahn-routes",
     # 12-point grid covering Berlin's city-wide U-Bahn network (6 km radius each)
     grid_points=(
         (52.5200, 13.4050),   # Mitte / Alexanderplatz (U2, U5, U8)

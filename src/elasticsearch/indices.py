@@ -34,6 +34,7 @@ def _departures_mapping() -> dict:
                 "stop_name":     {"type": "keyword"},
                 "stop_location": {"type": "geo_point"},
                 "trip_id":       {"type": "keyword"},
+                "stop_sequence": {"type": "integer"},
                 "hour_of_day":   {"type": "byte"},
                 "day_of_week":   {"type": "byte"},
                 "is_weekend":    {"type": "boolean"},
@@ -63,6 +64,25 @@ def _disruptions_mapping() -> dict:
     }
 
 
+def _routes_mapping() -> dict:
+    return {
+        "mappings": {
+            "properties": {
+                "line_name": {"type": "keyword"},
+                "stops": {
+                    "type": "nested",
+                    "properties": {
+                        "stop_id":       {"type": "keyword"},
+                        "name":          {"type": "keyword"},
+                        "stop_sequence": {"type": "integer"},
+                        "location":      {"type": "geo_point"},
+                    },
+                },
+            }
+        }
+    }
+
+
 def _stops_mapping() -> dict:
     return {
         "mappings": {
@@ -85,6 +105,7 @@ def create_indices(es: Elasticsearch, config: TransitConfig, recreate: bool = Fa
         (config.index_departures,  _departures_mapping()),
         (config.index_disruptions, _disruptions_mapping()),
         (config.index_stops,       _stops_mapping()),
+        (config.index_routes,      _routes_mapping()),
     ]
     for index_name, mapping in index_configs:
         if es.indices.exists(index=index_name):

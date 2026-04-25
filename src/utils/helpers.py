@@ -41,11 +41,19 @@ def enrich_departure(dep: dict) -> dict:
     if location.get("latitude") and location.get("longitude"):
         geo = {"lat": location["latitude"], "lon": location["longitude"]}
 
+    # stop_sequence: checked in both known API response shapes
+    stop_sequence = (
+        (dep.get("stopover") or {}).get("stop_sequence")
+        or dep.get("stop_sequence")
+    )
+
+    trip_id = dep.get("tripId") or dep.get("trip_id")
+
     return {
         "collected_at":  collected_at,
         "planned_when":  _parse_dt(planned_when),
         "when":          _parse_dt(dep.get("when")),
-        "delay_s":       dep.get("delay"),        # seconds, None if unknown
+        "delay_s":       dep.get("delay"),
         "cancelled":     bool(dep.get("cancelled")),
         "line_name":     line.get("name"),
         "line_id":       line.get("id"),
@@ -53,7 +61,8 @@ def enrich_departure(dep: dict) -> dict:
         "stop_id":       stop.get("id"),
         "stop_name":     stop.get("name"),
         "stop_location": geo,
-        "trip_id":       dep.get("tripId"),
+        "trip_id":       trip_id,
+        "stop_sequence": stop_sequence,
         "hour_of_day":   hour_of_day,
         "day_of_week":   day_of_week,
         "is_weekend":    is_weekend,
