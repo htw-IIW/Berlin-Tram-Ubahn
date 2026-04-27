@@ -1,6 +1,6 @@
 # src/collector/reseed_stops_from_departures.py
-# Rebuilds the stops index entirely from already-collected departure data.
-# Useful when seed_stops.py is unavailable or the stops index is out of sync.
+# Updates the lines field of existing stops from already-collected departure data.
+# Run after seed_stops_gtfs.py to fill in which lines serve each stop.
 #
 # Uses a Terms aggregation on stop_id so only one ES query is needed
 # regardless of how many departure documents exist.
@@ -12,7 +12,6 @@
 import sys
 import logging
 import argparse
-from datetime import datetime, timezone
 from elasticsearch import Elasticsearch, helpers
 
 sys.path.insert(0, ".")
@@ -38,7 +37,7 @@ def aggregate_stops(es: Elasticsearch, config: TransitConfig) -> list[dict]:
       - one representative stop_name + stop_location per unique stop_id
       - all line_name values that ever served that stop
 
-    Returns a list of stop documents ready for indexing into config.index_stops.
+    Returns a list of {stop_id, lines} dicts — only the fields being updated.
     """
     resp = es.search(
         index=config.index_departures,
@@ -50,14 +49,6 @@ def aggregate_stops(es: Elasticsearch, config: TransitConfig) -> list[dict]:
                     "size":  _MAX_STOPS,
                 },
                 "aggs": {
-                    # one representative doc per stop for name + location
-                    "top_hit": {
-                        "top_hits": {
-                            "size": 1,
-                            "_source": ["stop_name", "stop_location"],
-                        }
-                    },
-                    # all distinct lines that served this stop
                     "lines": {
                         "terms": {
                             "field": "line_name",
@@ -69,25 +60,13 @@ def aggregate_stops(es: Elasticsearch, config: TransitConfig) -> list[dict]:
         },
     )
 
-    buckets = resp["aggregations"]["stops"]["buckets"]
-    loaded_at = datetime.now(timezone.utc).isoformat()
-    docs: list[dict] = []
-
-    for bucket in buckets:
-        stop_id = bucket["key"]
-        source  = bucket["top_hit"]["hits"]["hits"][0]["_source"]
-        lines   = [b["key"] for b in bucket["lines"]["buckets"]]
-
-        # departures use stop_name/stop_location; stops index expects name/location
-        docs.append({
-            "stop_id":   stop_id,
-            "name":      source.get("stop_name"),
-            "location":  source.get("stop_location"),
-            "lines":     lines,
-            "loaded_at": loaded_at,
-        })
-
-    return docs
+    return [
+        {
+            "stop_id": bucket["key"],
+            "lines":   [b["key"] for b in bucket["lines"]["buckets"]],
+        }
+        for bucket in resp["aggregations"]["stops"]["buckets"]
+    ]
 
 
 def reseed_stops(es: Elasticsearch, config: TransitConfig) -> None:
@@ -99,15 +78,21 @@ def reseed_stops(es: Elasticsearch, config: TransitConfig) -> None:
         log.warning("  Keine Haltestellen gefunden — sind bereits Abfahrtsdaten vorhanden?")
         return
 
-    log.info(f"  {len(docs)} eindeutige Haltestellen gefunden — schreibe nach '{config.index_stops}'...")
+    log.info(f"  {len(docs)} eindeutige Haltestellen gefunden — aktualisiere 'lines' in '{config.index_stops}'...")
 
     actions = [
-        {"_index": config.index_stops, "_id": doc["stop_id"], "_source": doc}
+        {
+            "_op_type":      "update",
+            "_index":        config.index_stops,
+            "_id":           doc["stop_id"],
+            "doc":           {"lines": doc["lines"]},
+            "doc_as_upsert": False,   # skip stops not yet in the index
+        }
         for doc in docs
     ]
-    success, failed = helpers.bulk(es, actions, stats_only=True)
+    success, failed = helpers.bulk(es, actions, stats_only=True, raise_on_error=False)
 
-    log.info(f"  Indexiert: {success} Haltestellen ({failed} Fehler).")
+    log.info(f"  Aktualisiert: {success} Haltestellen ({failed} nicht gefunden oder Fehler).")
     log.info(f"[{config.display_name}] Fertig.")
 
 
