@@ -39,6 +39,20 @@ _GTFS_ROUTE_TYPE: dict[str, int] = {
 }
 
 
+def to_hafas_id(gtfs_stop_id: str) -> str:
+    """
+    Konvertiert GTFS stop_id zu HAFAS-ID.
+    'de:11000:900007104::2' → '900007104'
+    '900007104'             → '900007104'  (bereits HAFAS)
+
+    HAFAS-IDs sind die längsten rein-numerischen Segmente (9 Stellen typisch).
+    """
+    digit_parts = [p for p in gtfs_stop_id.split(":") if p.isdigit()]
+    if digit_parts:
+        return max(digit_parts, key=len)
+    return gtfs_stop_id
+
+
 # ── Download ──────────────────────────────────────────────────────────────────
 
 def download_gtfs(tmp_dir: Path) -> Path:
@@ -148,7 +162,7 @@ def build_stop_docs(tmp_dir: Path, stop_ids: set[str]) -> list[dict]:
             pass
 
         docs.append({
-            "stop_id":   row["stop_id"],
+            "stop_id":   to_hafas_id(row["stop_id"]),
             "name":      row["stop_name"],
             "location":  geo,
             "lines":     [],   # filled later by reseed_stops_from_departures
@@ -187,6 +201,7 @@ def seed_stops_gtfs(es, config: TransitConfig) -> None:
     actions = [
         {"_index": config.index_stops, "_id": doc["stop_id"], "_source": doc}
         for doc in docs
+        # stop_id is already the HAFAS ID (converted in build_stop_docs)
     ]
     success, failed = helpers.bulk(es, actions, stats_only=True)
     log.info("  Indexiert: %d Haltestellen (%d Fehler).", success, failed)
