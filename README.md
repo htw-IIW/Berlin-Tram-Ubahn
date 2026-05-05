@@ -75,14 +75,14 @@ Kostenlos, verfügbar für Windows, Mac und Linux.
 
 ## Setup (einmalig)
 
-### Schritt 1 — Repo klonen
+### Schritt 1: Repo klonen
 
 ```bash
 git clone https://github.com/<dein-username>/Berlin-Tram-UBahn.git
 cd NoSQL
 ```
 
-### Schritt 2 — Conda-Umgebung einrichten
+### Schritt 2: Conda-Umgebung einrichten
 
 ```bash
 conda create -n tram-analysis python=3.11
@@ -92,7 +92,7 @@ pip install -r requirements.txt
 
 > Bei jeder neuen Terminal-Session: `conda activate tram-analysis`
 
-### Schritt 3 — Elasticsearch & Kibana starten
+### Schritt 3: Elasticsearch & Kibana starten
 
 ```bash
 docker-compose up -d
@@ -109,7 +109,7 @@ curl -u elastic:changeme http://localhost:9200
 # → JSON mit ES-Versionsnummer = alles ok
 ```
 
-### Schritt 4 — Elasticsearch-Indizes anlegen
+### Schritt 4: Elasticsearch-Indizes anlegen
 
 Für jedes Netzwerk separat ausführen:
 
@@ -128,7 +128,7 @@ Erstelle Elasticsearch-Indizes für Straßenbahn...
 Fertig.
 ```
 
-### Schritt 5 — Kibana einrichten
+### Schritt 5: Kibana einrichten
 
 ```bash
 python -m src.elasticsearch.kibana_setup
@@ -137,7 +137,7 @@ python -m src.elasticsearch.kibana_setup
 Legt automatisch an: Data Views für alle Indizes + ein leeres Basis-Dashboard.
 Danach in Kibana: http://localhost:5601 → Dashboard → *Berliner Tram & U-Bahn, Übersicht*.
 
-### Schritt 6 — Haltestellen laden (einmalig)
+### Schritt 6: Haltestellen laden (einmalig)
 
 ```bash
 python -m src.collector.seed_stops --mode tram
