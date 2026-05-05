@@ -39,7 +39,6 @@ Continuously collected realtime departure data for Berlin's Tram and U-Bahn netw
 | `stop_name` | keyword | Human-readable stop name |
 | `stop_location` | geo_point | `{ lat, lon }` |
 | `trip_id` | keyword | BVG trip ID |
-| `stop_sequence` | integer | Position of this stop within the trip |
 | `hour_of_day` | byte | Derived from `planned_when` (0–23) |
 | `day_of_week` | byte | Derived from `planned_when` (0=Mon … 6=Sun) |
 | `is_weekend` | boolean | Derived: true if day_of_week ≥ 5 |
@@ -95,7 +94,6 @@ Disruptions are deduplicated via a deterministic MD5 hash (`trip_id | stop_id | 
   "stop_name":    "Prenzlauer Allee/Danziger Str.",
   "stop_location": { "lat": 52.5378, "lon": 13.4224 },
   "trip_id":      "1|12345|0|86|10042026",
-  "stop_sequence": 4,
   "hour_of_day":  8,
   "day_of_week":  3,
   "is_weekend":   false
