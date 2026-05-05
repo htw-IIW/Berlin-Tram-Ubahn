@@ -78,7 +78,7 @@ Kostenlos, verfügbar für Windows, Mac und Linux.
 ### Schritt 1 — Repo klonen
 
 ```bash
-git clone https://github.com/<dein-username>/NoSQL.git
+git clone https://github.com/<dein-username>/Berlin-Tram-UBahn.git
 cd NoSQL
 ```
 
