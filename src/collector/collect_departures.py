@@ -67,22 +67,34 @@ def process_departures(departures: list[dict]) -> tuple[list[dict], list[dict]]:
     return dep_docs, dis_docs
 
 
-def bulk_index(
-    es: Elasticsearch,
-    index: str,
-    docs: list[dict],
-    id_field: str | None = None,
-) -> int:
-    """Bulk-index docs into ES. If id_field is set, use it as deterministic _id."""
+def bulk_index(es: Elasticsearch, index: str, docs: list[dict]) -> int:
     if not docs:
         return 0
-    actions = []
-    for doc in docs:
-        source = {k: v for k, v in doc.items() if k != id_field}
-        action = {"_index": index, "_source": source}
-        if id_field:
-            action["_id"] = doc.get(id_field)
-        actions.append(action)
+    actions = [
+        {
+            "_index": index,
+            "_id": f"{doc.get('trip_id')}-{doc.get('stop_id')}-{doc.get('planned_when')}",
+            "_source": doc,
+            "op_type": "index",
+        }
+        for doc in docs
+    ]
+    success, _ = helpers.bulk(es, actions, stats_only=True)
+    return success
+
+
+def bulk_index_disruptions(es: Elasticsearch, index: str, docs: list[dict]) -> int:
+    if not docs:
+        return 0
+    actions = [
+        {
+            "_index": index,
+            "_id": doc.pop("_doc_id", None),
+            "_source": doc,
+            "op_type": "index",
+        }
+        for doc in docs
+    ]
     success, _ = helpers.bulk(es, actions, stats_only=True)
     return success
 
@@ -106,8 +118,8 @@ def collect_once(es: Elasticsearch, stop_ids: list[str], config: TransitConfig) 
             errors += 1
         time.sleep(0.05)   # 50 ms between requests to avoid hammering the API
 
-    n_deps = bulk_index(es, config.index_departures,  all_deps)
-    n_dis  = bulk_index(es, config.index_disruptions, all_dis, id_field="_doc_id")
+    n_deps = bulk_index(es, config.index_departures, all_deps)
+    n_dis  = bulk_index_disruptions(es, config.index_disruptions, all_dis)
 
     return {
         "departures_indexed":  n_deps,
