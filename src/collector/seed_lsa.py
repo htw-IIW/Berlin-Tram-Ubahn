@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 # Falls der Name anders ist, muss WFS_TYPENAME angepasst werden.
 
 WFS_BASE = "https://gdi.berlin.de/services/wfs/lsa"
-WFS_TYPENAME = "lsa:lichtsignalanlagen"  # ← ggf. anpassen nach GetCapabilities
+WFS_TYPENAME = "lsa:lsa"  # ← ggf. anpassen nach GetCapabilities
 
 def get_wfs_capabilities() -> str:
     """Ruft GetCapabilities ab und gibt den XML-Text zurück.
