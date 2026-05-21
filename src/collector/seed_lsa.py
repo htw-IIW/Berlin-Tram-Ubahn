@@ -18,6 +18,7 @@ import requests
 from datetime import datetime, timezone
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
+from pyproj import Transformer
 
 # Importiere ES-Verbindung und Index-Konstanten aus bestehendem Code.
 # Passe den Import an die tatsächliche Struktur in config/settings.py an.
@@ -47,11 +48,11 @@ def fetch_lsa_geojson() -> dict:
     """Lädt alle LSA als GeoJSON vom WFS."""
     params = {
         "SERVICE": "WFS",
+        "VERSION": "2.0.0",
         "REQUEST": "GetFeature",
         "TYPENAMES": WFS_TYPENAME,
-        "OUTPUTFORMAT": "application/json",
-        "SRSNAME": "EPSG:4326",
-        "COUNT": "10000",  # Berlin hat ca. 2.100 LSA, das reicht
+        "OUTPUTFORMAT": "json",
+        "COUNT": "10000",
     }
     log.info(f"Lade LSA-Daten von {WFS_BASE} ...")
     resp = requests.get(WFS_BASE, params=params, timeout=60)
@@ -127,6 +128,9 @@ def match_oepnv_status(bezeichnung: str) -> tuple:
     return "unbekannt", "", []
 
 
+_transformer = Transformer.from_crs("EPSG:25833", "EPSG:4326", always_xy=True)
+
+
 def parse_features(geojson: dict) -> list[dict]:
     """Wandelt GeoJSON-Features in ES-Dokumente um."""
     now = datetime.now(timezone.utc).isoformat()
@@ -136,17 +140,13 @@ def parse_features(geojson: dict) -> list[dict]:
         props = feat.get("properties", {})
         geom = feat.get("geometry", {})
 
-        # Koordinaten extrahieren — GeoJSON ist [lon, lat]
         coords = geom.get("coordinates", [None, None])
         if not coords or len(coords) < 2:
             continue
 
-        lon, lat = coords[0], coords[1]
+        lon_raw, lat_raw = coords[0], coords[1]
+        lon, lat = _transformer.transform(lon_raw, lat_raw)
 
-        # LSA-ID und Bezeichnung aus Properties
-        # Die exakten Feldnamen hängen vom WFS ab — häufig:
-        # "lsa_nr", "LSA_NR", "bezeichnung", "BEZEICHNUNG", "gml_id"
-        # → Beim ersten Lauf die Properties loggen und Feldnamen anpassen!
         lsa_id = str(
             props.get("lsa_nr")
             or props.get("LSA_NR")
@@ -155,7 +155,8 @@ def parse_features(geojson: dict) -> list[dict]:
             or f"lsa_{lat}_{lon}"
         )
         bezeichnung = str(
-            props.get("bezeichnung")
+            props.get("standort")
+            or props.get("bezeichnung")
             or props.get("BEZEICHNUNG")
             or props.get("name")
             or props.get("NAME")
