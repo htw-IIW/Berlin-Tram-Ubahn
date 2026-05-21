@@ -38,7 +38,7 @@ COLLECT_INTERVAL_SEC    = 60   # seconds between collection rounds
 DEPARTURE_WINDOW_MIN    = 20   # look-ahead per stop (minutes)
 MAX_DEPARTURES_PER_STOP = 10   # cap per API call
 
-ES_HOST     = "http://localhost:9200"
+ES_HOST     = "http://tram-pi:9200"
 ES_USER     = "elastic"
 ES_PASSWORD = "changeme"
 
