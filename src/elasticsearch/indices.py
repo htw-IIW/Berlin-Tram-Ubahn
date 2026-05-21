@@ -97,6 +97,46 @@ def _stops_mapping() -> dict:
     }
 
 
+# ── LSA (Lichtsignalanlagen) — netzwerkunabhängiger Index ────────────────────
+
+INDEX_LSA = "lsa-standorte"
+
+MAPPING_LSA = {
+    "mappings": {
+        "properties": {
+            "lsa_id":          {"type": "keyword"},
+            "bezeichnung":     {"type": "keyword"},
+            "location":        {"type": "geo_point"},
+            "oepnv_status":    {"type": "keyword"},
+            "oepnv_bemerkung": {"type": "text"},
+            "tram_linien":     {"type": "keyword"},
+            "seeded_at":       {"type": "date"},
+        }
+    },
+    "settings": {
+        "number_of_shards":   1,
+        "number_of_replicas": 0,
+    }
+}
+
+
+def create_lsa_index(es: Elasticsearch, recreate: bool = False) -> None:
+    """Create the LSA index (run once, network-independent)."""
+    if es.indices.exists(index=INDEX_LSA):
+        if recreate:
+            es.indices.delete(index=INDEX_LSA)
+            print(f"  Gelöscht:  {INDEX_LSA}")
+        else:
+            print(f"  Existiert bereits (übersprungen): {INDEX_LSA}")
+            return
+    es.indices.create(
+        index=INDEX_LSA,
+        mappings=MAPPING_LSA["mappings"],
+        settings=MAPPING_LSA["settings"],
+    )
+    print(f"  Erstellt:  {INDEX_LSA}")
+
+
 # ── Index management ──────────────────────────────────────────────────────────
 
 def create_indices(es: Elasticsearch, config: TransitConfig, recreate: bool = False) -> None:
@@ -123,14 +163,18 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Create Elasticsearch indices")
-    parser.add_argument("--mode", choices=list(CONFIGS), required=True,
-                        help="Transit network to create indices for (tram | ubahn)")
+    parser.add_argument("--mode", choices=[*CONFIGS, "lsa"], required=True,
+                        help="Transit network to create indices for (tram | ubahn | lsa)")
     parser.add_argument("--recreate", action="store_true",
                         help="Delete existing indices and recreate from scratch")
     args = parser.parse_args()
 
     client = get_client()
-    cfg = CONFIGS[args.mode]
-    print(f"Erstelle Elasticsearch-Indizes für {cfg.display_name}...")
-    create_indices(client, cfg, recreate=args.recreate)
+    if args.mode == "lsa":
+        print("Erstelle LSA-Index...")
+        create_lsa_index(client, recreate=args.recreate)
+    else:
+        cfg = CONFIGS[args.mode]
+        print(f"Erstelle Elasticsearch-Indizes für {cfg.display_name}...")
+        create_indices(client, cfg, recreate=args.recreate)
     print("Fertig.")
