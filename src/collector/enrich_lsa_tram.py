@@ -75,6 +75,13 @@ def enrich() -> None:
     # Alle Tram-Haltestellen laden
     stops = get_tram_stop_locations(es)
 
+    log.info(f"Stops geladen: {len(stops)}")
+    if stops:
+        log.info(f"Beispiel-Stop: {stops[0]}")
+    else:
+        log.warning("Keine Stops geladen — Abbruch")
+        return
+
     # Für jede Haltestelle: Finde LSA im Radius
     update_actions = []
     matched_lsa_ids = set()
