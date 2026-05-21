@@ -27,45 +27,43 @@ RADIUS_METERS = 150  # LSA muss innerhalb von 150m einer Haltestelle liegen
 
 def get_tram_stop_locations(es: Elasticsearch) -> list[dict]:
     """Holt alle einzigartigen Tram-Haltestellen mit Koordinaten aus tram-departures."""
-    agg = es.search(
-        index=INDEX_DEPARTURES,
-        size=0,
-        aggs={
-            "stops": {
-                "terms": {
-                    "field": "stop_name",
-                    "size": 2000,
-                },
-                "aggs": {
-                    "location": {
-                        "top_hits": {
-                            "size": 1,
-                            "_source": ["stop_name", "stop_location", "line_name"],
-                        }
-                    },
-                    "linien": {
-                        "terms": {
-                            "field": "line_name",
-                            "size": 50,
-                        }
-                    },
-                },
-            }
-        },
-    )
+    stop_locations: dict[str, dict] = {}
+    stop_linien: dict[str, set] = {}
 
-    stops = []
-    for bucket in agg["aggregations"]["stops"]["buckets"]:
-        hit = bucket["location"]["hits"]["hits"][0]["_source"]
-        loc = hit.get("stop_location", {})
-        linien = [b["key"] for b in bucket["linien"]["buckets"]]
-        if loc:
-            stops.append({
-                "name": bucket["key"],
-                "lat": loc.get("lat"),
-                "lon": loc.get("lon"),
-                "linien": linien,
-            })
+    for hit in scan(
+        es,
+        index=INDEX_DEPARTURES,
+        query={"query": {"match_all": {}}},
+        _source=["stop_name", "stop_location", "line_name"],
+        size=5000,
+    ):
+        src = hit["_source"]
+        name = src.get("stop_name")
+        loc = src.get("stop_location")
+        if not name or not loc:
+            continue
+        lat = loc.get("lat")
+        lon = loc.get("lon")
+        if lat is None or lon is None:
+            continue
+
+        if name not in stop_locations:
+            stop_locations[name] = {"lat": lat, "lon": lon}
+            stop_linien[name] = set()
+
+        line = src.get("line_name")
+        if line:
+            stop_linien[name].add(line)
+
+    stops = [
+        {
+            "name": name,
+            "lat": loc["lat"],
+            "lon": loc["lon"],
+            "linien": sorted(stop_linien[name]),
+        }
+        for name, loc in stop_locations.items()
+    ]
 
     log.info(f"{len(stops)} Tram-Haltestellen gefunden")
     return stops
