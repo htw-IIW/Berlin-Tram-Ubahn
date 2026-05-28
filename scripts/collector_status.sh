@@ -12,21 +12,17 @@ echo " Collector Status"
 echo "══════════════════════════════════════════════"
 
 for MODE in tram ubahn; do
-    PID_FILE="$SCRIPT_DIR/logs/collector-${MODE}.pid"
     LOG_FILE="$SCRIPT_DIR/logs/collector-${MODE}.log"
 
     echo ""
     echo "── $MODE ──────────────────────────────────────"
 
-    if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        if kill -0 "$PID" 2>/dev/null; then
-            echo "  ✅ Collector läuft (PID $PID)"
-        else
-            echo "  ❌ Collector gestoppt (PID $PID existiert nicht mehr)"
-        fi
+    if systemctl is-active --quiet "transit-collector@${MODE}"; then
+        MAIN_PID=$(systemctl show "transit-collector@${MODE}" --property=MainPID --value)
+        echo "  ✅ Collector läuft (PID $MAIN_PID)"
     else
-        echo "  ❌ Collector nicht gestartet"
+        echo "  ❌ Collector nicht aktiv"
+        systemctl status "transit-collector@${MODE}" --no-pager -n 3 2>&1 | sed 's/^/    /'
     fi
 
     echo ""
