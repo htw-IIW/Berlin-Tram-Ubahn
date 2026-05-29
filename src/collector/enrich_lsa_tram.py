@@ -129,6 +129,8 @@ def enrich() -> None:
         success, errors = bulk(es, update_actions, stats_only=True)
         log.info(f"Updates aktiv: {success}, Fehler: {errors}")
 
+    es.indices.refresh(index=INDEX_LSA)
+
     # Alle verbleibenden "unbekannt" → "kein_tram"
     remaining = scan(
         es,
