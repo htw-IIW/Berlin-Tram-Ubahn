@@ -70,14 +70,7 @@ LSA_OHNE_VORRANG = {
     # Format: Teilstring der LSA-Bezeichnung → (status, bemerkung, linien)
     # Das Matching erfolgt case-insensitive über str.contains()
 
-    # ── Linie M4 ──
-    "Alexanderstraße": (
-        "nicht_vorhanden",
-        "Hohe Tramfrequenz, Einfachhaltestelle, Baustellensituation, "
-        "Nähe Knoten Otto-Braun-Str - aus Verkehrssicherheitsgründen nicht möglich",
-        ["M4", "M5", "M2"]
-    ),
-    "Greifswalder Straße / Michelangelostraße": (
+    "Greifswalder Str. / Michelangelostr.": (
         "inaktiv",
         "Kein stabiler Betrieb wegen veralteter Hardware, Modernisierung in Planung",
         ["M4"]
@@ -87,27 +80,30 @@ LSA_OHNE_VORRANG = {
         "Neue Software nach Knotenumbau in Projektierung",
         ["M4", "12"]
     ),
-    "Berliner Allee / Buschallee": (
+    "Berliner Al. / Buschallee": (
         "inaktiv",
         "Bauzustand Berliner Wasserbetriebe",
         ["M4"]
     ),
-    "Falkenberger Chaussee / Welsestraße": (
+    "Falkenberger Ch. / Welsestr.": (
         "inaktiv",
         "Langsamfahrstelle wegen Gleisschäden",
         ["M4"]
     ),
-
-    # ── Linie M5 ──
-    "Landsberger Allee / Karl-Lade-Straße": (
+    "Karl-Lade-Str.": (
         "inaktiv",
         "Langsamfahrstelle wegen Gleisschäden",
         ["M5"]
     ),
-    "Hauptstraße / Suermondtstraße": (
+    "Suermondtstr. - Hauptstr.": (
         "inaktiv",
         "Nach Hardware-Modernisierung Software in Anpassung",
         ["M5"]
+    ),
+    "Alexanderstr.": (
+        "nicht_vorhanden",
+        "Hohe Tramfrequenz, aus Verkehrssicherheitsgründen nicht möglich",
+        ["M4", "M5", "M2"]
     ),
 }
 
