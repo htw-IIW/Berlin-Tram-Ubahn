@@ -124,15 +124,21 @@ def enrich() -> None:
 
     log.info(f"{len(matched_lsa_ids)} LSA als tram-relevant erkannt")
 
+    # Bulk-Update "aktiv"
+    if update_actions:
+        success, errors = bulk(es, update_actions, stats_only=True)
+        log.info(f"Updates aktiv: {success}, Fehler: {errors}")
+
     # Alle verbleibenden "unbekannt" → "kein_tram"
     remaining = scan(
         es,
         index=INDEX_LSA,
         query={"query": {"term": {"oepnv_status": "unbekannt"}}}
     )
+    kein_tram_actions = []
     kein_tram_count = 0
     for hit in remaining:
-        update_actions.append({
+        kein_tram_actions.append({
             "_op_type": "update",
             "_index": INDEX_LSA,
             "_id": hit["_id"],
@@ -142,10 +148,10 @@ def enrich() -> None:
 
     log.info(f"{kein_tram_count} LSA als kein_tram klassifiziert")
 
-    # Bulk-Update
-    if update_actions:
-        success, errors = bulk(es, update_actions, stats_only=True)
-        log.info(f"Updates: {success}, Fehler: {errors}")
+    # Bulk-Update "kein_tram"
+    if kein_tram_actions:
+        success, errors = bulk(es, kein_tram_actions, stats_only=True)
+        log.info(f"Updates kein_tram: {success}, Fehler: {errors}")
 
     # Finale Statistik
     es.indices.refresh(index=INDEX_LSA)
