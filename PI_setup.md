@@ -1,37 +1,36 @@
 # Raspberry Pi Deployment
 
-Der Pi läuft 24/7 und sammelt Daten automatisch im Hintergrund.
-Von überall per SSH + Tailscale erreichbar.
+Runs 24/7, collecting data automatically in the background. Accessible from anywhere via SSH and Tailscale.
 
-## Voraussetzungen
+## Requirements
 
-- Raspberry Pi 5, 8GB RAM
-- MicroSD 32GB mit Raspberry Pi OS Lite 64-bit
-- Heimnetz mit Internetanschluss
-- Tailscale-Account (kostenlos, tailscale.com)
+- Raspberry Pi 5, 8 GB RAM
+- 32 GB microSD with Raspberry Pi OS Lite 64-bit
+- Home network with internet access
+- Tailscale account (free, tailscale.com)
 
-## Einmaliges Setup (Reihenfolge einhalten)
+## One-time setup (follow this order)
 
 ```bash
-# 1. Pi grundlegend einrichten
+# 1. Basic Pi configuration
 sudo apt update && sudo apt upgrade -y
 sudo dphys-swapfile swapoff
-# → /etc/dphys-swapfile: CONF_SWAPSIZE=2048
+# → edit /etc/dphys-swapfile: set CONF_SWAPSIZE=2048
 sudo dphys-swapfile setup && sudo dphys-swapfile swapon
 echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
 
 # 2. Docker
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker pi
-# → neu einloggen
+# → log out and back in
 
-# 3. Miniforge (ARM-Conda)
+# 3. Miniforge (ARM-compatible Conda)
 wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh
 bash Miniforge3-Linux-aarch64.sh -b
 ~/miniforge3/bin/conda init bash && source ~/.bashrc
 conda create -n tram-analysis python=3.11 -y
 
-# 4. Repo + Dependencies
+# 4. Repo and dependencies
 cd ~
 git clone https://github.com/<username>/berlin-tram-analysis.git
 cd berlin-tram-analysis
@@ -40,77 +39,76 @@ pip install -r requirements.txt
 
 # 5. Elasticsearch + Kibana
 docker-compose up -d
-# Warten bis healthy (~60s), dann:
+# Wait until healthy (~60 s), then:
 python -m src.elasticsearch.indices --mode tram
 python -m src.elasticsearch.indices --mode ubahn
 python -m src.elasticsearch.kibana_setup
 python -m src.collector.seed_stops --mode tram
 python -m src.collector.seed_stops --mode ubahn
 
-# 6. Systemd-Dienst (Autostart + Crash-Recovery)
+# 6. systemd services (auto-start + crash recovery)
 bash deploy/install_services.sh
-# → erkennt automatisch Repo-Pfad, User und Conda-Python
-# → installiert tram-collector.service und startet ihn sofort
+# → auto-detects repo path, user, and Conda Python
+# → installs tram-collector.service and starts it immediately
 
-# 7. Tailscale (Remote-Zugriff von überall)
+# 7. Tailscale (remote access from anywhere)
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
-# → Link im Browser öffnen, einloggen
+# → open the printed link in a browser and log in
 ```
 
-## Täglicher Betrieb — Befehle
+## Daily operations
 
 ```bash
-# Status aller Collector + Dokument-Zähler
+# Status of all collectors + document counts
 bash berlin-tram-analysis/scripts/collector_status.sh
 
-# Systemd-Dienst-Status
+# systemd service status
 sudo systemctl status transit-collector@tram
 sudo systemctl status transit-collector@ubahn
 
-# Live-Logs
+# Live logs
 tail -f berlin-tram-analysis/logs/collector-tram.log
 tail -f berlin-tram-analysis/logs/collector-ubahn.log
 
-# Einzelnen Collector neu starten
+# Restart a single collector
 sudo systemctl restart transit-collector@tram
 sudo systemctl restart transit-collector@ubahn
 
-# Docker-Container Status
+# Docker container status
 docker-compose -f berlin-tram-analysis/docker-compose.yml ps
 
-# Elasticsearch direkt abfragen
-curl -u elastic:changeme http://localhost:9200/tram-departures/_count
+# Query Elasticsearch directly
+curl -u elastic:changeme http://localhost:9200/tram-departures-v2/_count
 ```
 
-## Remote-Zugriff via Tailscale
+## Remote access via Tailscale
 
 ```bash
-# SSH von Mac/unterwegs
+# SSH from Mac or anywhere
 ssh pi@tram-pi
 
-# Kibana im Browser (von überall im Tailscale-Netz)
+# Kibana in the browser (from anywhere on the Tailscale network)
 http://tram-pi:5601
 
-# Daten aus Python-Notebook auf dem Mac abfragen
-# → in config/settings.py: ES_HOST = "http://tram-pi:9200"
+# Query Elasticsearch from a notebook on your Mac
+# → set in config/settings.py: ES_HOST = "http://tram-pi:9200"
 ```
 
-## Neustart-Verhalten
+## Restart behaviour
 
-Die systemd-Dienste `transit-collector@tram` und `transit-collector@ubahn` starten automatisch:
-- beim Pi-Booten
-- nach einem Absturz (nach 30s)
-- nach Stromausfall
+The systemd services `transit-collector@tram` and `transit-collector@ubahn` start automatically:
+- on Pi boot
+- after a crash (30 s delay)
+- after a power outage
 
-Docker-Container starten ebenfalls automatisch dank `restart: unless-stopped`
-(in docker-compose.yml bereits so konfiguriert).
+Docker containers also restart automatically via `restart: unless-stopped` in `docker-compose.yml`.
 
-## Speicherverbrauch
+## Storage
 
-| Was | Größe |
+| Component | Size |
 |---|---|
-| Elasticsearch-Daten (2 Monate) | ~2–3 GB |
-| Docker Images | ~1.5 GB |
-| OS + Software | ~4 GB |
-| **Gesamt** | **~8–9 GB** (32GB Karte reicht locker) |
+| Elasticsearch data (2 months) | ~2–3 GB |
+| Docker images | ~1.5 GB |
+| OS + software | ~4 GB |
+| **Total** | **~8–9 GB** (32 GB card is sufficient) |

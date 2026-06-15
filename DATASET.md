@@ -2,14 +2,11 @@
 
 ## Overview
 
-Continuously collected realtime departure data for Berlin's Tram and U-Bahn networks, stored in Elasticsearch. Data is fetched every 60 seconds from a community-maintained BVG REST API wrapper. The dataset also includes service disruptions and static stop/route reference data.
+Continuously collected realtime departure and disruption data for Berlin's tram and U-Bahn networks, stored in Elasticsearch.
 
-**API source:** https://v6.bvg.transport.rest (community wrapper by Jannis R., [@derhuerst](https://github.com/derhuerst))
-**Stop reference data:** VBB GTFS dataset (CC BY 4.0)
+All index mappings are defined explicitly before data ingestion. Elasticsearch's dynamic mapping would otherwise infer imprecise types: timestamps as `text`, coordinates as plain `float` pairs rather than `geo_point`, and short integers as `long`. The field names and types below reflect deliberate mapping decisions, not auto-detected ones.
 
-## Authorship
-
-- **Valeria Muggironi, Louis Ledwon** — Master Students, HTW Berlin (NoSQL Semester Project)
+---
 
 ## Dataset Snapshot
 
@@ -21,9 +18,11 @@ Continuously collected realtime departure data for Berlin's Tram and U-Bahn netw
 | Estimated size after 2 months | ~3 GB total across all indices | |
 | Collection start | March 2026 | March 2026 |
 
+---
+
 ## Indices & Data Schema
 
-### Departures (`tram-departures`, `ubahn-departures`)
+### Departures (`tram-departures-v2`, `ubahn-departures`)
 
 | Field | Type | Description |
 |---|---|---|
@@ -37,7 +36,7 @@ Continuously collected realtime departure data for Berlin's Tram and U-Bahn netw
 | `direction` | keyword | Destination (end stop name) |
 | `stop_id` | keyword | BVG stop ID |
 | `stop_name` | keyword | Human-readable stop name |
-| `stop_location` | geo_point | `{ lat, lon }` |
+| `stop_location` | geo_point | `{ lat, lon }` — explicit mapping required for geo queries |
 | `trip_id` | keyword | BVG trip ID |
 | `hour_of_day` | byte | Derived from `planned_when` (0–23) |
 | `day_of_week` | byte | Derived from `planned_when` (0=Mon … 6=Sun) |
@@ -79,6 +78,18 @@ Disruptions are deduplicated via a deterministic MD5 hash (`trip_id | stop_id | 
 | `line_name` | keyword | Line identifier |
 | `stops` | nested | Ordered list of stops: `stop_id`, `name`, `stop_sequence`, `location` |
 
+### Traffic signals (`lsa-standorte`)
+
+| Field | Type | Description |
+|---|---|---|
+| `lsa_id` | keyword | Derived unique ID from coordinates |
+| `standort` | text | Location description from WFS |
+| `location` | geo_point | `{ lat, lon }` |
+| `oepnv_status` | keyword | `aktiv`, `inaktiv`, `nicht_vorhanden`, `kein_tram` |
+| `tram_linien` | keyword | Tram lines within 150m radius (derived) |
+
+---
+
 ## Typical Data Point (Departure)
 
 ```json
@@ -100,6 +111,8 @@ Disruptions are deduplicated via a deterministic MD5 hash (`trip_id | stop_id | 
 }
 ```
 
+---
+
 ## Collection Method
 
 1. Stop IDs are seeded once from the VBB GTFS dataset and supplemented via the BVG API's nearby-stops endpoint across a 12-point geographic grid covering Berlin.
@@ -107,11 +120,8 @@ Disruptions are deduplicated via a deterministic MD5 hash (`trip_id | stop_id | 
 3. Remarks of type `warning` or `status` are extracted from departure responses and stored as disruption documents.
 4. All documents are bulk-indexed into Elasticsearch.
 
+---
+
 ## Sensitivity
 
 No personal or sensitive data. All collected information is public transit schedule and operational data. No user identifiers are present.
-
-## License & Usage
-
-- Departure/disruption data: sourced via the community BVG API wrapper — for research/educational use only; not for commercial redistribution.
-- Stop reference data: VBB GTFS (CC BY 4.0) — attribution required.
