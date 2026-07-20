@@ -43,3 +43,6 @@ logs/*
 *.swo
 
 docs/
+
+notebooks/02_hypothesen.ipynb
+notebooks/05_kosten.ipynb
