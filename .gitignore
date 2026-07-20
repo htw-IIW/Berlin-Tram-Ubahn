@@ -44,5 +44,5 @@ logs/*
 
 docs/
 
-notebooks/02_hypothesen.ipynb
+notebooks/04_delay_propagation.ipynb
 notebooks/05_kosten.ipynb
