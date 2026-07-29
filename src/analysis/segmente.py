@@ -72,7 +72,11 @@ def lade_fahrten(
     df = pd.DataFrame(zeilen)
     if df.empty:
         return df
-    df["planned_when"] = pd.to_datetime(df["planned_when"], utc=True)
+    # format="ISO8601" ist zwingend: Zeitstempel werden im Index mal mit,
+    # mal ohne Mikrosekunden serialisiert; ohne Angabe leitet pandas das
+    # Format aus dem ersten Wert ab und scheitert an der anderen Variante.
+    df["planned_when"] = pd.to_datetime(df["planned_when"], utc=True,
+                                        format="ISO8601")
     return df
 
 

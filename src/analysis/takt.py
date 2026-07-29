@@ -85,7 +85,8 @@ def _lade_fahrplan(es, index: str, linie: str, von: str, bis: str) -> pd.DataFra
     if df.empty:
         return df
 
-    df["planned_when"] = pd.to_datetime(df["planned_when"], utc=True)
+    df["planned_when"] = pd.to_datetime(df["planned_when"], utc=True,
+                                        format="ISO8601")
     # Ein- und Aussetzfahrten zum Betriebshof sind keine Fahrgastfahrten
     df = df[~df["direction"].str.contains("Betriebshof", na=False)]
     df = df[~df["stop_name"].apply(ist_betriebliche_haltestelle)]
