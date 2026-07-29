@@ -20,7 +20,20 @@ from src.analysis.quality import (
     beschreibe_filter,
 )
 
+from src.analysis.takt import (
+    takt_je_linie,
+    puenktlichkeit_je_linie,
+    verfruehungskosten,
+    TAKT_REFERENZ_VON,
+    TAKT_REFERENZ_BIS,
+)
+
 __all__ = [
+    "takt_je_linie",
+    "puenktlichkeit_je_linie",
+    "verfruehungskosten",
+    "TAKT_REFERENZ_VON",
+    "TAKT_REFERENZ_BIS",
     "ANALYSE_START",
     "ANALYSE_ENDE",
     "COLLECTOR_AUSFALL_START",
