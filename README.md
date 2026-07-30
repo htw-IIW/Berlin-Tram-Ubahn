@@ -10,10 +10,29 @@ The project is structured as a joint submission for two courses at HTW Berlin:
 
 ## What this project analyses
 
-1. **How punctual is the tram?** delay distributions by line, time of day, and stop type
-2. **Do missing traffic signal priorities cause delays?** linking Berlin's LSA dataset to measured tram delays (H6b)
-3. **Where do delays originate and propagate?** trip-level delay diffing across stop sequences
-4. **What does it cost?** operational cost of delay, LSA upgrade ROI, and a tram vs. U-Bahn infrastructure comparison
+1. **Is the tram really worse than the U-Bahn?** paired comparison of both networks, collected simultaneously under identical conditions
+2. **Where does unreliability come from?** delay generated per track segment, rather than delay observed per stop
+3. **Do missing traffic signal priorities explain it?** linking Berlin's LSA dataset to measured delay — including where that link fails to hold
+4. **What would fixing it cost?** cost of delay, three concrete measures, and a tram vs. U-Bahn infrastructure comparison
+5. **What should be done?** ranked measures by euro per passenger-hour saved, plus a reliability prediction model
+
+### Headline findings
+
+| Finding | Value |
+|---|---|
+| Departures outside the punctuality window (−1 to +3 min) | Tram **30.0 %** vs. U-Bahn **9.9 %** |
+| Departures ≥ 1 min **early** | Tram **19.2 %** vs. U-Bahn **5.9 %** |
+| Effect size, mean delay (stop level) | r = 0.24 — *small* |
+| Effect size, share ≥ 3 min late | r = 0.61 — *large* |
+| Effect size, share ≥ 1 min early | r = 0.80 — *very large* |
+| Cancellation rate (clean window) | Tram 0.52 % vs. U-Bahn **1.16 %** |
+| Service interruptions per million departures | Tram **25.1** vs. U-Bahn 4.9 |
+| Weather-related disruptions | Tram **19** vs. U-Bahn **0** |
+| Delay concentration (Gini, 763 segments) | 0.54 — worst 20 % of segments produce 57 % |
+
+> **The tram is not slower than the U-Bahn — it is less predictable.** And the more
+> frequent deviation is the one nobody talks about: running *early*, which costs
+> passengers a full headway rather than a few seconds.
 
 ---
 
@@ -88,12 +107,28 @@ All notebooks are in [`notebooks/`](notebooks/) and run sequentially — each bu
 
 | Notebook | Title | Contents |
 |---|---|---|
-| [`01_eda.ipynb`](notebooks/01_eda.ipynb) | Exploratory Data Analysis | Delay distributions, cancellations, line comparisons, time-of-day patterns |
-| [`01b_eda.ipynb`](notebooks/01b_eda.ipynb) | EDA — U-Bahn | Same analysis for the subway network |
-| [`02_hypothesen.ipynb`](notebooks/02_hypothesen.ipynb) | Hypothesis Tests | H1–H4: mixed traffic, junction stops, M10 vs M4, rush-hour effects (Mann-Whitney-U, Kruskal-Wallis) |
-| [`03_lsa_analyse.ipynb`](notebooks/03_lsa_analyse.ipynb) | LSA Analysis | Linking signal priority status to measured delays; H6/H6b; outlier map |
-| [`04_delay_propagation.ipynb`](notebooks/04_delay_propagation.ipynb) | Delay Propagation | Per-trip delay deltas; worst segments; onset-stop analysis |
-| [`05_kosten.ipynb`](notebooks/05_kosten.ipynb) | Cost Analysis | Operational cost of delays; LSA upgrade ROI; tram vs. U-Bahn infrastructure economics; historical context |
+| [`01_eda.ipynb`](notebooks/01_eda.ipynb) | EDA — Tram | Distributions, data quality (§ 2b, six findings), **early departures** (§ 3b), effective headway per line |
+| [`02_eda.ipynb`](notebooks/02_eda.ipynb) | EDA — U-Bahn + network comparison | Same analysis for the subway, plus the **paired tram/U-Bahn comparison at stop level** (§ 6) |
+| [`03_lsa_analyse.ipynb`](notebooks/03_lsa_analyse.ipynb) | Traffic signal priority | H6/H6b, **why H6b is circular** (§ 4c), non-circular counter-test on generated delay (§ 4d), measure derivation from the documented reasons (§ 4e) |
+| [`04_hypothesen.ipynb`](notebooks/04_hypothesen.ipynb) | Hypothesis tests | H1–H4, why H1 fails and what it reveals (§ 3b), **n-inflation demonstrated empirically** (§ 7b) |
+| [`04_delay_propagation.ipynb`](notebooks/04_delay_propagation.ipynb) | Delay propagation | Delay *generated* per segment; onset stops; **concentration curve and Gini** (§ 7) |
+| [`05_kosten.ipynb`](notebooks/05_kosten.ipynb) | Cost analysis | Cost of measured delay; three concrete measures; tram vs. U-Bahn per km; historical context; **resilience** (§ 5) |
+| [`06_entscheidungshilfe.ipynb`](notebooks/06_entscheidungshilfe.ipynb) | Decision aid | **Measure ranking** by euro per passenger-hour saved; **reliability model** P(delay ≥ 3 min) |
+
+### Shared analysis modules
+
+Notebooks share one definition of the analysis window, the exclusion rules and the
+derived quantities, so that figures stay consistent across them:
+
+| Module | Purpose |
+|---|---|
+| [`src/analysis/quality.py`](src/analysis/quality.py) | Analysis window, collector outage, operational-stop filter, thresholds |
+| [`src/analysis/takt.py`](src/analysis/takt.py) | Effective headway per line (handles branch services), cost of early departures |
+| [`src/analysis/segmente.py`](src/analysis/segmente.py) | Delay *generated* per segment (Δdelay), day-wise over the full collection period |
+
+`segmente_gesamtzeitraum()` processes the whole period day by day, accumulating only
+per-segment aggregates. This covers ~7.1 M segment observations across 60 weekdays
+without holding them in memory; the result is cached to `data/processed/`.
 
 ---
 
