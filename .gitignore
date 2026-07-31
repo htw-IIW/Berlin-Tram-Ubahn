@@ -49,3 +49,6 @@ notebooks/05_kosten.ipynb
 
 # Notebook-Backups aus Patch-Läufen
 *.ipynb.bak
+
+# Videomaterial (Rohclips, Screenshots, Zwischenrenders)
+video/
