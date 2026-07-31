@@ -140,10 +140,11 @@ Daneben die Tabelle mit den Begründungen aus Abschnitt 4e.
 > Die Tram ist also nicht einfach langsamer. Sie ist **unberechenbarer**.
 
 > **Regie und Absicherung:** Die amtlichen Anteile (Tram 3,53 % zu früh) und meine
-> (19,2 %) unterscheiden sich deutlich. Das ist erklärbar und **muss im Video nicht
-> aufgelöst werden**, solange du keine der beiden Zahlen als Widerspruch zur anderen
-> präsentierst. Zeige die amtliche Grafik für die **Richtung**, deine für den
-> **Mechanismus**.
+> (19,2 %) unterscheiden sich um Faktor fünf, weil der Senat je Fahrt zählt und ich je
+> Halt. **Nenne im Video keine der beiden absoluten Zahlen direkt neben der anderen.**
+> Sprich bei der amtlichen Grafik vom **Verhältnis** („fünfzehnmal so oft"), bei deiner
+> vom **Mechanismus** („jede fünfte Abfahrt an einem Halt"). So entsteht kein
+> scheinbarer Widerspruch.
 >
 > Falls in der Fragerunde nachgehakt wird — die Erklärung steht unten unter
 > „Verhältnis zur amtlichen Statistik".
@@ -270,15 +271,35 @@ zeigst. Die Zeit ist an drei Stellen wieder eingespart (Szene 2, 5 und 8).
 Die Senatsverwaltung weist für 2025 aus: Straßenbahn 3,53 % zu früh und 13,32 % zu spät,
 U-Bahn 0,23 % und 1,70 %. Meine Messung kommt auf 19,2 % / 10,8 % bzw. 5,9 % / 4,0 %.
 
-**Der Unterschied ist keine Widerlegung, sondern eine andere Zähleinheit.**
+**Der Unterschied ist keine Widerlegung. Drei Effekte überlagern sich, und sie lassen
+sich mit den veröffentlichten Angaben nicht trennen.**
 
-- Der Senat zählt **je Fahrt**, diese Arbeit **je Abfahrtsereignis an einer Haltestelle**.
-  Eine Fahrt, die an drei von dreißig Halten zu früh ist, zählt amtlich nicht als
-  verfrüht — in meinen Daten dreimal.
-- Es liegt **nicht** an der Schwelle. Um die amtlichen Werte zu reproduzieren, bräuchte
-  man für die Tram eine Schwelle von etwa 150 Sekunden und für die U-Bahn von etwa
-  280 — zwei verschiedene Schwellen innerhalb derselben Statistik gibt es nicht.
-- Die Zeiträume unterscheiden sich (2025 gegen April–Juli 2026).
+**1. Andere Zähleinheit — vermutlich der stärkste Effekt.**
+Der Senat zählt **je Fahrt**, diese Arbeit **je Abfahrtsereignis an einer Haltestelle**.
+Eine Fahrt, die an drei von dreißig Halten zu früh ist, zählt amtlich nicht als
+verfrüht — in meinen Daten dreimal.
+
+**2. Nicht die Schwelle.**
+Um die amtlichen Werte zu reproduzieren, bräuchte man für die Tram eine Schwelle von
+etwa 150 Sekunden, für die U-Bahn von etwa 280. Zwei verschiedene Schwellen innerhalb
+derselben Statistik gibt es nicht. Damit scheidet die Schwellenwahl als Erklärung aus.
+
+**3. Anderer Zeitraum — wirkt nur bei der Verspätung, und dort wie erwartet.**
+Die amtliche Zahl umfasst das ganze Jahr 2025, meine Messung April bis Juli 2026.
+
+| | amtlich (Jahr) | eigene Messung (Sommer) | passt zur Saisonthese? |
+|---|---|---|---|
+| Tram, zu spät | 13,32 % | 10,8 % | **ja** — Jahr schlechter als Sommer |
+| Tram, zu früh | 3,53 % | 19,2 % | nein — Winter macht Bahnen später, nicht früher |
+| U-Bahn, zu spät | 1,70 % | 4,03 % | nein — Jahr müsste höher liegen, liegt niedriger |
+
+Nur die erste Zeile lässt sich saisonal erklären — und sie stützt genau die These aus
+Notebook 01, Befund 6: **Der Sommer ist der Bestfall der Straßenbahn**, das Jahresmittel
+liegt höher. Die anderen beiden Zeilen zeigen, dass der Einheitenunterschied überwiegt.
+
+> **Konsequenz für die Präsentation:** Die Niveaus der beiden Quellen sind **nicht
+> vergleichbar** und dürfen nicht nebeneinandergestellt werden, als wären sie es. Nutze
+> die amtliche Grafik ausschließlich für die **Richtung**.
 
 **Entscheidend für die Argumentation:** Beide Quellen zeigen dieselbe Richtung, und die
 amtliche Statistik zeigt den Abstand sogar **deutlich größer** als meine Messung:
@@ -291,6 +312,11 @@ amtliche Statistik zeigt den Abstand sogar **deutlich größer** als meine Messu
 > Die eigene Analyse ist gegenüber der amtlichen Statistik also **konservativ**. Wer
 > ihr vorwirft, den Unterschied zu übertreiben, argumentiert gegen die Zahlen der
 > Senatsverwaltung.
+
+**Falls in der Fragerunde nach den Niveauunterschieden gefragt wird**, ist die kurze
+Antwort: *„Der Senat zählt je Fahrt, ich je Halt — die Niveaus sind nicht vergleichbar.
+Vergleichbar ist das Verhältnis zwischen den Netzen, und da fällt die Tram amtlich sogar
+deutlicher ab als bei mir."*
 
 ---
 
