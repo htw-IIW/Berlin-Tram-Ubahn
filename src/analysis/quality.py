@@ -137,11 +137,59 @@ BETRIEBLICHE_HALTESTELLEN = (
 )
 
 
+# ── 4. Fremde Verkehrsbetriebe ───────────────────────────────────────────────
+#
+# Der Tram-Index enthält eine Linie, die nicht zum BVG-Netz gehört: die 88 der
+# Schöneiche-Rüdersdorfer Straßenbahn (SRS). Sie erscheint in den Daten, weil
+# die BVG-API auch Abfahrten an Umsteigepunkten ausliefert.
+#
+#   Dokumente          4.640  (0,04 % des Tram-Index)
+#   Haltestellen       1      (S Friedrichshagen/Dahlwitzer Landstr.)
+#   Anteil ohne delay  100,0 %
+#
+# Die Linie liefert keinen einzigen Echtzeitwert. Für alle Verspätungs-
+# auswertungen war sie damit ohnehin wirkungslos — sie fällt durch jede
+# delay_s-Bedingung heraus. Sichtbar wird sie nur dort, wo Vollständigkeit je
+# Linie dargestellt wird: In der Grafik "Anteil fehlender Verspätungswerte pro
+# Linie" steht sie mit 100 % an der Spitze und liest sich wie ein
+# Datenqualitätsproblem des eigenen Erfassungswegs. Das ist sie nicht — es ist
+# ein Fremdbetrieb ohne Echtzeitschnittstelle.
+#
+# Sie wird deshalb durchgängig ausgeschlossen, damit die Grundgesamtheit
+# "BVG-Straßenbahn" heißt und auch genau das ist.
+
+FREMDLINIEN = ("88",)   # SRS Schöneiche-Rüdersdorf
+
+FREMDLINIEN_BEGRUENDUNG = (
+    "Linie 88 = Schöneiche-Rüdersdorfer Straßenbahn (SRS), kein BVG-Betrieb; "
+    "1 Haltestelle, 100 % ohne Echtzeitdaten"
+)
+
+
+def ist_fremdlinie(line_name: str) -> bool:
+    """True, wenn die Linie nicht zum BVG-Netz gehört."""
+    if not line_name:
+        return False
+    return str(line_name).strip() in FREMDLINIEN
+
+
+def ohne_fremdlinien(df, spalte: str = "line_name"):
+    """Entfernt Fremdbetriebe aus einem DataFrame mit Linienspalte.
+
+    Gibt den DataFrame unverändert zurück, wenn die Spalte fehlt — damit lässt
+    sich die Funktion auch auf Aggregate anwenden, die keine Linie führen.
+    """
+    if spalte not in getattr(df, "columns", []):
+        return df
+    return df[~df[spalte].apply(ist_fremdlinie)].copy()
+
+
 # ── Query-Bausteine für Elasticsearch ────────────────────────────────────────
 
 def analysefenster_query(
     feld: str = "planned_when",
     ausfall_ausschliessen: bool = True,
+    fremdlinien_ausschliessen: bool = True,
 ) -> dict:
     """
     Elasticsearch-Filter für das reguläre Analysefenster.
@@ -150,6 +198,9 @@ def analysefenster_query(
     Das ist für alle Auswertungen nötig, die auf gleichmäßiger Abtastung
     beruhen (Tagesgänge, Raten, Fahrtenrekonstruktion). Für reine
     Verteilungsbetrachtungen einzelner Abfahrten ist es nicht zwingend.
+
+    fremdlinien_ausschliessen=True entfernt Linien fremder Verkehrsbetriebe
+    (siehe FREMDLINIEN). Für den U-Bahn-Index ist die Bedingung wirkungslos.
     """
     muss = [{"range": {feld: {"gte": ANALYSE_START, "lte": ANALYSE_ENDE}}}]
     darf_nicht = []
@@ -160,6 +211,8 @@ def analysefenster_query(
                 "lt":  COLLECTOR_AUSFALL_ENDE,
             }}
         })
+    if fremdlinien_ausschliessen:
+        darf_nicht.append({"terms": {"line_name": list(FREMDLINIEN)}})
     return {"bool": {"must": muss, "must_not": darf_nicht}}
 
 
@@ -186,5 +239,7 @@ def beschreibe_filter() -> str:
         f"delay_s-Auflösung:     {DELAY_QUANTISIERUNG_S} s (minutenquantisiert)\n"
         f"Kappung Verteilungen:  ±{DELAY_CLIP_S} s\n"
         f"Verspätet ab:          {VERSPAETET_SCHWELLE_S} s\n"
-        f"Ausgeschl. Haltestellen: Betriebshöfe, [Ausstieg], [Endstelle]"
+        f"Ausgeschl. Haltestellen: Betriebshöfe, [Ausstieg], [Endstelle]\n"
+        f"Ausgeschl. Linien:     {', '.join(FREMDLINIEN)} "
+        f"({FREMDLINIEN_BEGRUENDUNG})"
     )

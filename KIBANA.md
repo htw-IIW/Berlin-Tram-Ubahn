@@ -104,6 +104,99 @@ Ergebnis: Tram rund **30 %**, U-Bahn rund **10 %** außerhalb des Fensters.
 
 ---
 
+## Grafik 1b — Die beiden Verteilungen nebeneinander *(Video, Szene 4)*
+
+**Belegt die Aussage:** „Im Mittel liegt die Tram bei 33 Sekunden, die U-Bahn bei 22 —
+aber der Mittelwert verdeckt das Wesentliche."
+
+Das ist das Bild zu Szene 4. Die Kacheln aus Grafik 1 nennen die Zahl, hier **sieht**
+man, warum der Mittelwert nichts taugt: Der Unterschied steckt nicht in der Lage der
+Verteilung, sondern in ihrer **Form**. Die U-Bahn ist ein schmaler Turm auf der Null,
+die Tram ein breiter Hügel — bei fast identischem Mittelwert.
+
+### Anlegen
+
+1. Im Dashboard **Create visualization**, Data View `Abfahrten beide Netze`
+2. Diagrammtyp **Bar vertical**
+3. In die Suchleiste den Basisfilter, ergänzt um den Ausschnitt und **ein Netz**:
+
+```
+delay_s: * and not stop_name: ("Betriebshof*" or "*[Ausstieg]" or "*[Endstelle]")
+and delay_s >= -300 and delay_s <= 600 and _index: "tram-departures-v2"
+```
+
+4. **Horizontal axis** → Feld `delay_s` → Typ **Intervals**
+   - **Minimum interval** auf **60** stellen
+5. **Vertical axis** → **Formula**:
+
+```
+count() / overall_sum(count())
+```
+
+6. **Value format** → **Percent**, Dezimalstellen **1**
+7. Achsenbeschriftungen: unten *Verspätung (s)*, links *Anteil der Abfahrten*
+8. Farbe auf `#E53935` setzen (rechtes Panel → Serie → **Color**)
+9. **Save and return**
+
+### Dieselbe Grafik für die U-Bahn
+
+Panel duplizieren (**⋯ → Clone panel**), dann im Filter `tram-departures-v2` durch
+`ubahn-departures-v2` ersetzen und die Farbe auf `#1E88E5` ändern.
+
+Beide Panels im Dashboard **nebeneinander** legen.
+
+> **Warum zwei Diagramme statt eines mit Breakdown?** Dieselbe Falle wie bei Grafik 2:
+> `overall_sum(count())` normiert über das **gesamte** Diagramm. Mit einem Breakdown
+> nach `_index` würden beide Kurven durch dieselbe Gesamtsumme geteilt — und weil die
+> Tram fast doppelt so viele Abfahrten hat, sähe sie überall höher aus, ohne dass das
+> etwas bedeutet. Getrennte Diagramme normieren jeweils auf das eigene Netz, und erst
+> dann sind die Formen vergleichbar.
+
+> **Warum Intervall 60?** `delay_s` ist minutenquantisiert — alle Werte sind exakte
+> Vielfache von 60 (`DATASET.md`, Punkt 1). Jede andere Klassenbreite erzeugt
+> Kammartefakte: mal fallen zwei echte Werte in einen Balken, mal einer. Mit 60
+> entspricht ein Balken genau einer Minute.
+
+### Damit es im Video funktioniert
+
+**Beide Panels auf dieselbe Y-Achse zwingen:** rechtes Panel → *Left axis* → *Bounds* →
+Max fest auf `0.7`. Ohne das skaliert Kibana jedes Panel für sich, und die beiden
+Diagramme sehen fast gleich aus, obwohl sie es nicht sind — der häufigste Fehler bei
+nebeneinandergelegten Verteilungen.
+
+**Nicht abschneiden.** Der Balken auf der Null ist der höchste, aber er ist kein
+Störfaktor, sondern die halbe Aussage: Dort steht, wie oft ein Netz **exakt** pünktlich
+ist. Eine gekappte Y-Achse würde genau den Unterschied wegschneiden, den du zeigen willst.
+
+### So sieht es aus — und so prüfst du, ob es stimmt
+
+Gemessen über den Analysezeitraum, Klassenbreite 60 s:
+
+| Abweichung | Tram | U-Bahn |
+|---|---|---|
+| 2 Min zu früh | 8,9 % | 0,9 % |
+| 1 Min zu früh | 8,9 % | 4,9 % |
+| **exakt pünktlich** | **45,0 %** | **67,4 %** |
+| 1 Min zu spät | 16,9 % | 17,9 % |
+| 2 Min zu spät | 8,6 % | 4,8 % |
+| 3 Min zu spät | 4,6 % | 1,9 % |
+
+Drei Dinge werden im Bild sofort sichtbar, die der Mittelwert alle verschluckt:
+
+1. **Die U-Bahn ist anderthalbmal so oft exakt pünktlich** — 67 gegen 45 Prozent.
+2. **Bei „eine Minute zu spät" sind beide praktisch gleich** (17 gegen 18 Prozent).
+   Genau deshalb liegen die Mittelwerte so dicht beieinander.
+3. **Links ist die Tram fast zehnmal so breit.** Zwei Minuten zu früh: 8,9 gegen
+   0,9 Prozent. Das ist die Verfrühung aus Szene 5 — schon hier im Bild, bevor du
+   sie benennst.
+
+> **Gegenprobe:** Die linken beiden Zeilen plus die Reste jenseits von −2 Minuten ergeben
+> rund 19 % für die Tram und rund 6 % für die U-Bahn. Das sind exakt die Werte aus
+> Grafik 1 und aus den Notebooks. Kommst du auf deutlich andere Zahlen, stimmt einer der
+> Filter nicht.
+
+---
+
 ## Grafik 2 — Der Abstand wächst mit der Schwere *(Video, Szene 4)*
 
 **Belegt die Aussage:** „Beim Durchschnitt ist der Unterschied klein, bei der
@@ -296,6 +389,12 @@ Vergleiche die Werte aus Grafik 1 mit diesen Richtwerten. Sie stammen aus den No
 Wenn die Zeit knapp wird, in dieser Reihenfolge:
 
 1. **Grafik 1** — die vier Kernzahlen. Schnell gebaut, im Video am besten lesbar.
-2. **Grafik 3** — die Karte. Stärkstes Bild und belegt die Geo-Fähigkeiten des Stacks.
-3. **Grafik 2** — der Schwellenvergleich. Inhaltlich der Kern, aber aufwendiger.
-4. Grafik 4 und 5 sind Reserve für die Fragerunde.
+2. **Grafik 1b** — die beiden Verteilungen. Das Bild, das Szene 4 im Storyboard
+   verlangt, und der einzige Beleg, der „der Mittelwert lügt" *zeigt* statt behauptet.
+3. **Grafik 3** — die Karte. Stärkstes Bild und belegt die Geo-Fähigkeiten des Stacks.
+4. **Grafik 2** — der Schwellenvergleich. Inhaltlich der Kern, aber aufwendiger.
+5. Grafik 4 und 5 sind Reserve für die Fragerunde.
+
+> **Wenn du nur eine baust:** Grafik 1b. Sie trägt Szene 4 allein, und sie ist die
+> einzige, die aus Elasticsearch kommt statt aus einem Notebook — das ist für den
+> NoSQL-Teil der Abgabe sichtbar relevant.

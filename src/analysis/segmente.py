@@ -28,6 +28,8 @@ from collections import defaultdict
 import pandas as pd
 from elasticsearch.helpers import scan
 
+from src.analysis.quality import FREMDLINIEN
+
 # Fahrten mit weniger Beobachtungen erlauben keine sinnvolle Differenzbildung.
 MIN_HALTE_JE_FAHRT = 3
 
@@ -73,9 +75,21 @@ def lade_fahrten(
     if nur_werktags:
         filter_klauseln.append({"range": {"day_of_week": {"lte": 4}}})
 
+    # Fremdbetriebe (siehe quality.FREMDLINIEN). Praktisch wirkungslos, weil
+    # die betroffene Linie ohnehin keine delay_s-Werte liefert und schon an
+    # der exists-Bedingung scheitert — steht hier, damit die Grundgesamtheit
+    # nicht von einer Nebenbedingung abhängt, sondern ausgesprochen ist.
+    # scroll="30m" statt der Voreinstellung von 5 Minuten: Der Suchkontext muss
+    # zwischen zwei Batches am Leben bleiben. Auf dem Raspberry Pi dauert ein
+    # Batch bei mehreren Wochen Zeitraum gelegentlich länger als fünf Minuten,
+    # dann bricht der Lauf mit "NotFoundError: No search context found" ab —
+    # nach mehreren Minuten Wartezeit und mitten in der Abfrage.
     treffer = scan(
-        es, index=index, size=10_000,
-        query={"query": {"bool": {"filter": filter_klauseln}}},
+        es, index=index, size=10_000, scroll="30m",
+        query={"query": {"bool": {
+            "filter": filter_klauseln,
+            "must_not": [{"terms": {"line_name": list(FREMDLINIEN)}}],
+        }}},
         _source=["trip_id", "planned_when", "delay_s", "stop_name", "line_name"],
     )
 

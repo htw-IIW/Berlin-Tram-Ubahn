@@ -27,6 +27,11 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
+## Stichprobenexport für externe Auswertungen. Die CSVs sind groß (~50 MB) und
+## jederzeit mit scripts/export_regression_sample.py reproduzierbar; das
+## Codebook beschreibt sie und bleibt versioniert.
+data/export/*.csv
+
 ## Logs (generated at runtime)
 logs/*
 !logs/.gitkeep

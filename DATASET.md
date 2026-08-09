@@ -149,6 +149,30 @@ Between 943 and ~12,000 documents per day were captured instead of the usual ~14
 The remaining records come from irregular sampling times and are unusable for rates,
 daily profiles and trip reconstruction. Excluded via `analysefenster_query()`.
 
+### 2b. Second, shorter gap: 14–15 May 2026
+
+A separate and previously undocumented interruption sits **inside** the May analysis
+window used by `notebooks/03_lsa_analyse.ipynb`. Tram departures with `delay_s`, weekdays
+only:
+
+| Date | Documents | Share of a normal day |
+|---|---|---|
+| 13 May | 129,185 | 100 % |
+| **14 May** | **81,432** | **63 %** |
+| **15 May** | **1,425** | **1 %** |
+| 18 May | 128,150 | 100 % |
+
+The 15th is effectively missing; the 14th ends early. Unlike the June outage this one is
+**not** excluded by `analysefenster_query()`, because the window it belongs to is
+specified by date range in the notebook itself.
+
+**Consequence:** harmless for cross-sectional measures — stop-level means over 15 weekdays
+lose one day of input and shift by less than the run-to-run variation of the ongoing
+collection. It matters for anything indexed by date: daily rates, weekday profiles, and
+any before/after comparison spanning mid-May. The cluster bootstrap in
+`03_lsa_analyse.ipynb`, section 4d-2, resamples calendar days and therefore treats the
+short day as the smaller cluster it is, without special handling.
+
 ### 3. `cancelled` breaks after the restart — U-Bahn only
 
 |  | U-Bahn before | U-Bahn after |
@@ -226,6 +250,31 @@ lines, leaf fall and snow clearance all fall outside the window and affect only 
 **No annual statements are possible.** The paired network comparison remains valid because
 both networks were captured simultaneously under identical conditions — and the measured
 gap is a *lower bound* on the annual gap.
+
+### 12. The tram index contains one non-BVG operator
+
+Line **88** belongs to the Schöneiche–Rüdersdorf tramway (SRS), a separate operator. It
+appears in the data because the BVG departures endpoint also serves interchange stops.
+
+| | line 88 |
+|---|---|
+| Documents | 4,640 (0.04 % of the tram index) |
+| Stops | 1 — *S Friedrichshagen/Dahlwitzer Landstr.* |
+| Share without `delay_s` | **100.0 %** |
+
+Because the line supplies no realtime values at all, it never entered any delay statistic —
+every one of those is conditioned on `delay_s` existing. It was visible in exactly one
+place: the per-line completeness chart, where it ranked first at 100 % missing and read as
+a flaw in the collection pipeline rather than what it is, a foreign operator without a
+realtime feed.
+
+It is now excluded throughout, so that the population is "BVG tram" and nothing else. The
+rule lives in `src/analysis/quality.py` (`FREMDLINIEN`, `ist_fremdlinie`,
+`ohne_fremdlinien`) and is applied both in the Elasticsearch filter
+(`analysefenster_query`) and at the three points where a tram DataFrame is loaded.
+
+> Effect on reported figures: tram document count 11,989,793 → 11,985,153. All delay,
+> punctuality, segment and cost results are unchanged.
 
 ---
 
