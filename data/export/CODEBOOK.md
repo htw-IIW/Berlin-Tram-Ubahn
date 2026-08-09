@@ -129,6 +129,49 @@ Zwei Fallstricke:
    Fahrten mit weniger als 3 Halten erlauben keine sinnvolle
    Differenzbildung.
 
+### ÖPNV-Beeinflussung (LSA)
+
+Zwei Fragen, die sehr verschieden gut belegt sind, deshalb zwei Spalten statt
+einer Skala — dieselbe Trennung, die auch die Karte in Notebook 03 färbt:
+
+| Spalte | Frage | Werte |
+|---|---|---|
+| `lsa_vorhanden` | Liegt eine Anlage an diesem Halt? **Gemessen** | `True` / `False` (grün / grau) |
+| `beeinflussung_belegt` | Ist die Beeinflussung dort in Betrieb? **Nur für M4/M5 beantwortet** | `inaktiv_belegt` (rot), `unklar`, `nicht_belegt` |
+| `auf_drucksachen_linie` | Halt liegt an M4 oder M5 — nur dort hat die Quelle nachgesehen | `True` / `False` |
+| `lsa_status` | Rohwert des Index: `aktiv`, `inaktiv`, `unklar`, `kein_lsa`, `kein_tram` | für den Abgleich mit NB 03 |
+| `lsa_distanz_m` | Entfernung zu dieser Anlage, Radius 150 m | |
+| `lsa_vorhanden_from`, `beeinflussung_belegt_from`, `lsa_status_from`, `lsa_distanz_from_m` | dasselbe für `stop_from` | |
+
+Eine Zeile betrifft zwei Haltestellen. Für die Frage, wie viel Verspätung im
+Zulauf auf eine Kreuzung entsteht, gelten die Spalten **ohne** Suffix — der Halt
+am Ziel des Abschnitts, auf dem `delta_delay_s` entstanden ist.
+
+**Es gibt bewusst keine Spalte "hat ÖPNV-Beeinflussung".** Für keine einzige
+Anlage ist positiv belegt, dass die Beeinflussung dort arbeitet; der
+WFS-Datensatz der Senatsverwaltung führt das Feld nicht. Der Indexwert `aktiv`
+heißt wörtlich *"liegt im 150-m-Radius einer Haltestelle und stand nicht auf der
+Drucksachenliste"* — er beantwortet Frage 1, nicht Frage 2. `nicht_belegt` heißt
+entsprechend: über diese Anlage sagt keine Quelle etwas. Es heißt nicht
+"funktioniert".
+
+**Vor der Auswertung `data/export/CODEBOOK_LSA.md` lesen.** Drei Punkte bestimmen
+das Ergebnis:
+
+1. **Die Vergleichsgruppe sind M4 und M5, nicht das Netz.** Die Drucksache hat nur
+   dort nachgesehen; ein Vergleich gegen alle Halte enthält auch die Frage,
+   welche Linien überhaupt untersucht wurden. Mit `auf_drucksachen_linie`
+   eingegrenzt schrumpft der Abstand von +1,2 gegen +6,3 s auf +2,1 gegen +6,3 s.
+2. **Die Gegengruppe besteht aus sechs Anlagen**, von denen zwei wegen
+   **Gleisschäden** abgeschaltet sind — und die liefern die höchsten Werte. Dort
+   misst ein Modell den Effekt eines Gleisschadens, nicht den der Ampel. Die
+   Begründung steht als `lsa_bemerkung` in `haltestellen_lsa_tram.csv`.
+3. **Anlage ist nicht Haltestelle.** Zwei Haltestellen können an derselben Anlage
+   liegen — bei den inaktiven kommt das zweimal vor. Wer auf Abfahrtsebene
+   rechnet, hat für die ganze Gruppe **fünf** unabhängige Einheiten, nicht 3.235
+   Zeilen. Cluster-robuste Fehler auf `lsa_id` (in `haltestellen_lsa_tram.csv`),
+   sonst ist der p-Wert eine Funktion der Stichprobengröße und nicht der Evidenz.
+
 ### Qualitätsmerker
 
 | Spalte | Bedeutung |

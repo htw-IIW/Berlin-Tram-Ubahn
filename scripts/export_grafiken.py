@@ -91,6 +91,15 @@ SZENEN = {
     "szene3c_erben_erzeugen":  ("03_lsa_analyse", "heißt nicht, dass sie dort entsteht"),
     "szene4_effektstaerken":   ("02_eda", "rang-biseriale"),
     "szene5_puenktlichkeit":   ("01_eda", "pünktlichkeitsfenster"),
+    # Verfrühungen gegen Verspätungen an einer gemeinsamen Nulllinie, ohne den
+    # pünktlichen Rest. Läuft im Storyboard vor der amtlichen rbb-Grafik.
+    #
+    # Bewusst OHNE Szenennummer: Die Nummern in diesem Wörterbuch stammen aus
+    # der Zeit vor der Umstellung vom 09.08.2026 und stimmen nicht mehr
+    # (szene3b_lsa_balken gehört inzwischen zu Szene 6). Eine weitere, diesmal
+    # richtige Nummer daneben wäre die schlechtere Verwirrung. Die Zuordnung
+    # Grafik → Szene steht in PRESENTATION.md, Abschnitt „Grafiken".
+    "richtungen_frueh_spaet":  ("01_eda", "in beide richtungen häufiger ab"),
     "szene6_konzentration":    ("04_delay_propagation", "anteil der abschnitte"),
     "szene6b_ueberlappung":    ("02_eda", "netze überlappen"),
     "szene7_massnahmen":       ("06_entscheidungshilfe", "personenstunden"),
@@ -232,25 +241,19 @@ def _annotationen_einfangen(fig):
     return fig
 
 def _lesbar_machen(fig):
-    """Schriftgrößen für die Projektion anheben. Farben bleiben unberührt."""
-    fig.update_layout(
-        font=dict(size=19),
-        title_font=dict(size=27),
-        legend=dict(font=dict(size=17)),
-        margin=dict(t=110, l=90, r=60, b=90),
-    )
-    for name in dir(fig.layout):
-        if _re.fullmatch(r"[xy]axis\d*", name):
-            achse = getattr(fig.layout, name, None)
-            if achse is not None:
-                achse.update(title_font=dict(size=19), tickfont=dict(size=16))
-    neu = []
-    for ann in (fig.layout.annotations or []):
-        ann.font.size = max(int(ann.font.size or 14) + 5, 19)
-        neu.append(ann)
-    if neu:
-        fig.layout.annotations = neu
-    return fig
+    """Schriftgrößen für die Projektion anheben. Farben bleiben unberührt.
+
+    Die Umrechnung selbst steht seit dem 09.08.2026 in
+    src/analysis/grafiken.fuers_video, damit scripts/grafik_richtungen.py sie
+    mitbenutzen kann statt einer zweiten, nachgebauten Fassung.
+
+    Der Import ist mit Absicht verzögert: Dieser Vorspann läuft VOR allen
+    Importen des Notebooks, die Projektwurzel liegt zu diesem Zeitpunkt also noch
+    nicht im sys.path. Aufgerufen wird die Funktion erst beim ersten fig.show(),
+    und da hat die Setup-Zelle des Notebooks den Pfad längst gesetzt.
+    """
+    from src.analysis.grafiken import fuers_video
+    return fuers_video(fig)
 
 _original_show = _go.Figure.show
 

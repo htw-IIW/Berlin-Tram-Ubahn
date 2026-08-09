@@ -16,6 +16,7 @@ build/
 env/
 venv/
 .conda/
+lf-env312/
 
 ## Jupyter
 .ipynb_checkpoints/

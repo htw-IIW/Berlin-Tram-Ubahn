@@ -278,6 +278,92 @@ rule lives in `src/analysis/quality.py` (`FREMDLINIEN`, `ist_fremdlinie`,
 
 ---
 
+### 13. `delta_delay` lets early running masquerade as recovery
+
+The segment measure `delta_delay = delay(i+1) − delay(i)` treats an early departure as
+negative delay, so an early vehicle running *further* ahead of schedule is scored the same
+way as a late vehicle catching up. Both come out negative.
+
+This is not a corner case. Over the collection period:
+
+| | |
+|---|---|
+| Segment observations starting early | ~20 % |
+| Mean `delta_delay` when the segment starts early | **≈ +10 s** |
+| Mean `delta_delay` when it does not | ≈ −1 s |
+| Negative deltas that are vehicles running further ahead | **~50 %** |
+
+The network mean of about +1 s is therefore driven almost entirely by early vehicles
+returning to schedule — not by delay being generated and absorbed.
+
+Since 9 August 2026 `segmente_aus_fahrten()` also returns
+
+```
+delta_verspaetung = max(delay(i+1), 0) − max(delay(i), 0)
+```
+
+which clips at the timetable, so an early departure contributes 0 and can never offset a
+late one. Worked examples are in the header of `src/analysis/segmente.py`.
+
+| before | after | `delta_delay` | `delta_verspaetung` | |
+|---|---|---|---|---|
+| +120 s | +180 s | +60 s | +60 s | falls further behind |
+| +180 s | +120 s | −60 s | −60 s | catches up |
+| −60 s | −120 s | −60 s | **0 s** | runs further ahead |
+| −120 s | −60 s | +60 s | **0 s** | returns toward schedule |
+
+Early running is not discarded, only measured elsewhere — as the share of early departures
+per stop (notebook 03, section 2). A *level* and a *change* are two quantities; forcing
+them into one number was the defect.
+
+> Which one is in use: `zufluss_je_haltestelle(..., spalte=…)` defaults to `delta_delay`,
+> so notebooks 04, 05, 06 and the cached `segmente_tram_gesamt.parquet` are unaffected.
+> Notebook 03 asks for `delta_verspaetung` explicitly. The active choice is recorded in
+> `agg.attrs["quelle"]`.
+
+---
+
+### 14. The punctuality window used here is tighter than the official one
+
+Analyses in this project use the window **]−60 s, +180 s[**. The BVG/Senate figure uses
+**]−90 s, +210 s[**. Because `delay_s` is minute-quantised (characteristic 1), the official
+thresholds behave as −120 s and +240 s — a filter on `≤ −90` and one on `≤ −120` return
+identical counts, verified to the decimal.
+
+| Window | Tram outside | U-Bahn outside |
+|---|---|---|
+| ]−60, +180[ — used here | **29.9 %** | 10.1 % |
+| ]−90, +210[ — official | 16.6 % | 3.2 % |
+
+**Our share is roughly double the official one, and none of that difference is a
+difference in operations.** Any figure from this project placed beside a published BVG
+punctuality number without stating the window is a false comparison.
+
+The early side is especially sensitive, because the threshold is inclusive and −60 s is the
+single most frequent early value:
+
+| Early value | Tram | share of all early tram departures |
+|---|---|---|
+| exactly −60 s | 996,782 | **45.8 %** |
+| exactly −120 s | 1,000,921 | 46.0 % |
+| −180 s or earlier | 165,330 | 8.2 % |
+
+For the U-Bahn **83.3 %** of all early departures sit on −60 s exactly. Since a reported
+−60 s is a rounded value, "at least one minute early" in practice means "more than roughly
+half a minute early".
+
+Raising the early threshold to −120 s halves the tram share (29.9 % → 21.1 %) and *widens*
+the gap between the networks, because the U-Bahn's early share collapses from 6.1 % to
+1.0 % — a factor of 3.1 becomes a factor of 10.4. Whether that concentration on one bucket
+is genuine dispatch behaviour or an artefact of the U-Bahn feed cannot be decided from
+these data.
+
+> The tighter window is a deliberate choice, not an oversight: a whole `Takt` is lost to
+> any early departure regardless of size. Both variants are produced —
+> `scripts/karten_zuverlaessigkeit.py` writes the maps at −60 s and at −120 s.
+
+---
+
 ## Sensitivity
 
 No personal or sensitive data. All collected information is public transit schedule and

@@ -21,6 +21,47 @@
 # weil delta_delay unabhängig von der Ausreißerdefinition ist, mit der dort
 # die Gruppe "potentiell ineffektiv" gebildet wurde. Ein Test auf delta_delay
 # ist damit nicht zirkulär.
+#
+# ── Warum es zwei Deltas gibt ────────────────────────────────────────────────
+#
+# `delta_delay` hat eine Eigenschaft, die man kennen muss: Es behandelt eine
+# Verfrühung als negative Verspätung und rechnet beides gegeneinander auf. Eine
+# Fahrt, die 60 s zu früh ankommt und 120 s zu früh weiterfährt, bekommt
+# delta_delay = −60 — sie sieht aus, als hätte sie Verspätung abgebaut,
+# obwohl sie in Wahrheit weiter aus dem Fahrplan gelaufen ist.
+#
+# Das ist keine Kleinigkeit. Gemessen über den Erhebungszeitraum:
+#
+#     19,5 %  aller Segmentbeobachtungen starten verfrüht
+#     +9,87 s Ø delta_delay, wenn die Fahrt verfrüht startet
+#     −0,68 s Ø delta_delay, wenn sie es nicht tut
+#     50,5 %  aller negativen Deltas sind Fahrzeuge, die weiter vorlaufen
+#
+# Der positive Netzmittelwert von +1,38 s entsteht also praktisch vollständig
+# dadurch, dass verfrühte Fahrzeuge zum Fahrplan zurückkehren.
+#
+#     delta_verspaetung = max(delay_(i+1), 0) − max(delay_i, 0)
+#
+# schneidet den Fahrplan bei null ab und misst nur noch die Veränderung der
+# Verspätung. Eine Verfrühung trägt überall 0 bei und kann deshalb keine
+# Verspätung ausgleichen. Beispiele:
+#
+#     vorher   nachher   delta_delay   delta_verspaetung
+#     +120 s   +180 s        +60 s          +60 s   wird später
+#     +180 s   +120 s        −60 s          −60 s   holt auf
+#      −60 s   −120 s        −60 s            0 s   läuft weiter vor
+#     −120 s    −60 s        +60 s            0 s   nähert sich dem Fahrplan
+#      +30 s    −30 s        −60 s          −30 s   verliert nur seine 30 s
+#
+# Die Verfrühung geht dabei nicht verloren, sie wird nur woanders gemessen:
+# als Anteil verfrühter Abfahrten je Haltestelle (Notebook 03, Abschnitt 5).
+# Eine Änderung und ein Niveau sind zwei verschiedene Größen; sie in eine Zahl
+# zu pressen war der Fehler.
+#
+# `delta_delay` bleibt erhalten und wird weiter berechnet — Notebook 04, 05
+# und 06 und der Zwischenstand segmente_tram_gesamt.parquet rechnen damit.
+# Für die Frage "wo entsteht Verspätung?" ist `delta_verspaetung` die richtige
+# Größe.
 
 import pathlib
 from collections import defaultdict
@@ -130,10 +171,29 @@ def segmente_aus_fahrten(df: pd.DataFrame) -> pd.DataFrame:
     df["stop_from"]    = gruppe["stop_name"].shift(1)
     df["delta_delay"]  = df["delay_s"] - gruppe["delay_s"].shift(1)
 
+    # Zweite Fassung derselben Differenz, in der eine Verfrühung nicht gegen
+    # eine Verspätung aufgerechnet wird — siehe Kommentar oben, Abschnitt
+    # "Warum es zwei Deltas gibt".
+    df["delay_to"]   = df["delay_s"]
+    df["delay_from"] = gruppe["delay_s"].shift(1)
+
+    verspaetung     = df["delay_to"].clip(lower=0)
+    verspaetung_vor = df["delay_from"].clip(lower=0)
+    df["delta_verspaetung"] = verspaetung - verspaetung_vor
+
     segmente = df.dropna(subset=["stop_from", "delta_delay"]).copy()
+    # Gefiltert wird weiter über delta_delay: Die Grenze fängt zurückgezogene
+    # Prognosen ab, und die zeigen sich im rohen Sprung, nicht in der
+    # abgeschnittenen Fassung.
     segmente = segmente[segmente["delta_delay"].abs() <= MAX_ABS_DELTA_S]
+    # delay_from und delay_to werden mitgegeben, damit die Wahl des Deltas
+    # nachprüfbar ist, ohne die Fahrten ein zweites Mal zu laden. Ohne sie
+    # lässt sich aus den beiden Differenzen nicht mehr rekonstruieren, welche
+    # Beobachtung verfrüht war — und genau das ist die Zahl, mit der die
+    # Umstellung begründet wird.
     return segmente[["trip_id", "line_name", "stop_from", "stop_to",
-                     "delta_delay", "planned_when"]]
+                     "delay_from", "delay_to",
+                     "delta_delay", "delta_verspaetung", "planned_when"]]
 
 
 def segmente_gesamtzeitraum(
@@ -266,6 +326,7 @@ def segment_aggregat(
 def zufluss_je_haltestelle(
     segmente: pd.DataFrame,
     min_beobachtungen: int = 100,
+    spalte: str = "delta_delay",
 ) -> pd.DataFrame:
     """
     Erzeugte Verspätung je *Zielhaltestelle*, gemittelt über alle Zufahrten.
@@ -273,15 +334,25 @@ def zufluss_je_haltestelle(
     Das ist die Größe, die mit der LSA-Ausstattung einer Haltestelle
     verglichen wird: Wie viel Verspätung entsteht auf dem Weg *zu* dieser
     Haltestelle — also im Zulauf auf die dortige Kreuzung.
+
+    `spalte` wählt zwischen den beiden Deltas (siehe Kopf dieser Datei):
+    `delta_delay` verrechnet Verfrühung gegen Verspätung, `delta_verspaetung`
+    tut das nicht. Die Vorgabe bleibt `delta_delay`, damit die bestehenden
+    Aufrufe in Notebook 04, 05 und 06 unverändert weiterrechnen; Notebook 03
+    fordert seit dem 09.08.2026 ausdrücklich `delta_verspaetung` an.
+
+    Die Ergebnisspalte heißt in beiden Fällen `erzeugte_verspaetung_s`. Welche
+    Fassung darin steht, steht in `agg.attrs["quelle"]`.
     """
     agg = (
         segmente.groupby("stop_to")
-        .agg(erzeugte_verspaetung_s=("delta_delay", "mean"),
-             std_s=("delta_delay", "std"),
-             n_beobachtungen=("delta_delay", "size"),
+        .agg(erzeugte_verspaetung_s=(spalte, "mean"),
+             std_s=(spalte, "std"),
+             n_beobachtungen=(spalte, "size"),
              n_linien=("line_name", "nunique"))
         .reset_index()
         .rename(columns={"stop_to": "stop_name"})
     )
+    agg.attrs["quelle"] = spalte
     agg = agg[agg["n_beobachtungen"] >= min_beobachtungen]
     return agg.sort_values("erzeugte_verspaetung_s", ascending=False).reset_index(drop=True)
