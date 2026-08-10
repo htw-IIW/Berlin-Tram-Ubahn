@@ -95,9 +95,13 @@ DELAY_CLIP_S = 600
 # Geändert am 10.08.2026 von 180 auf 240 s. Vorher war 180 als "drei
 # Quantisierungsstufen, oberhalb des 75.-Perzentils" begründet — eine
 # datengetriebene, aber willkürliche Wahl. Seit die Auswertung Quoten gegen die
-# vertraglich vereinbarten Zielwerte stellt (Tram 91 %, U-Bahn 97 %), muss die
-# Schwelle die des Vertrags sein, sonst vergleicht man gegen ein verschobenes
-# Ziel.
+# vertraglich vereinbarten Zielwerte stellt, muss die Schwelle die des Vertrags
+# sein, sonst vergleicht man gegen ein verschobenes Ziel.
+#
+# Die Jahressollwerte stehen in data/bvg/ (Export aus dem Qualitätsmonitor der
+# Senatsverwaltung). Für die Pünktlichkeit: Straßenbahn 92,30 %, U-Bahn 98,70 %.
+# ACHTUNG: In frueheren Fassungen dieses Kommentars standen 91 % und 97 % — das
+# war aus dem Gedaechtnis zitiert und falsch. Immer gegen data/bvg/ pruefen.
 #
 # ── Warum 240 und nicht 180 ──────────────────────────────────────────────────
 #
@@ -125,12 +129,16 @@ DELAY_CLIP_S = 600
 #   Tram, Anteil verspätet     10,77 %        6,23 %
 #   U-Bahn, Anteil verspätet    4,02 %        2,11 %
 #   Faktor Tram : U-Bahn         2,68x         2,95x
-#   Pünktlichkeitsquote Tram   78,84 %       83,38 %   (Vertragsziel 91 %)
-#   Pünktlichkeitsquote U-Bahn 95,00 %       96,90 %   (Vertragsziel 97 %)
+#   Pünktlichkeitsquote Tram   78,84 %       83,38 %   (Vertragsziel 92,30 %)
+#   Pünktlichkeitsquote U-Bahn 95,00 %       96,90 %   (Vertragsziel 98,70 %)
 #
-# Erst mit 240 reproduziert die U-Bahn den amtlichen Zielwert (96,90 gegen 97,0)
-# — die externe Validierung der gesamten Erhebung. Die Anteile beider Netze
-# sinken, das Verhältnis zwischen ihnen wird dabei sogar größer.
+# Die Anteile beider Netze sinken, das Verhältnis zwischen ihnen wird dabei
+# sogar größer.
+#
+# Die eigenen Quoten liegen systematisch UNTER den amtlichen, weil hier je
+# Halt und dort je Fahrt gezählt wird. Der Abstand zwischen den Netzen stimmt
+# dagegen gut überein — Nachweis und Monatsvergleich in
+# scripts/validierung_bvg.py.
 #
 # ACHTUNG, Nebenwirkung: Notebook 06 benutzt die Schwelle als Zielklasse des
 # Vorhersagemodells (df["verspaetet"]). Die Klasse wird dadurch kleiner und

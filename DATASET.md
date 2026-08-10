@@ -344,9 +344,16 @@ translated onto the minute grid; neither is a judgement call of this project.
 Under the BVG transport contract, since **1 January 2025** a trip counts as punctual if it
 departs **between 60 s before and 210 s after** the published time; the early tolerance was
 tightened from 90 s to 60 s on that date, which is why figures from 2025 onward are not
-comparable with older published ones. *Verfrühungsvermeidung* is a second, separate metric:
-departing **more than 60 s early** is to be avoided, because to a passenger arriving on time
-it behaves like a cancellation.
+comparable with older published ones. *Verfrühungsvermeidung* is a **separate, fourth metric**
+with its own target (tram 99.00 %, U-Bahn 99.90 %): the share of trips **not** departing more
+than 60 s early.
+
+> Note the distinction, which earlier drafts of this file blurred: the contract does **not**
+> state that an early departure is booked as a cancelled trip. "Cancelled" belongs to
+> *Zuverlässigkeit* (trips operated out of trips ordered). That an early departure *behaves*
+> like a cancellation for a passenger who arrives on time is an interpretation this project
+> makes — well founded, but it must be presented as an argument, not as a quotation from the
+> contract. Source of record: `data/bvg/definition.md`.
 
 Because `delay_s` is minute-quantised (characteristic 1), "more than 60 s early" has exactly
 one representation in this data:
@@ -380,14 +387,12 @@ Effect of the late-side change:
 | Tram late | 10.77 % | 6.23 % |
 | U-Bahn late | 4.02 % | 2.11 % |
 | ratio | 2.68× | **2.95×** |
-| **punctuality rate, tram** | 78.84 % | **83.38 %** (contract target 91 %) |
-| **punctuality rate, U-Bahn** | 95.00 % | **96.90 %** (contract target 97 %) |
+| **punctuality rate, tram** | 78.84 % | **83.38 %** (contract target 92.30 %) |
+| **punctuality rate, U-Bahn** | 95.00 % | **96.90 %** (contract target 98.70 %) |
 
-The last two rows are why this matters beyond tidiness: only at the contract threshold does the
-U-Bahn rate reproduce the officially published target (96.90 vs 97.0). That agreement is the
-strongest external validation available for this self-collected dataset — an independently
-measured pipeline landing on a figure it was never fitted to. At `≥ +180` the agreement
-disappears and the validation argument with it.
+The contract targets come from `data/bvg/` (export of the Senate's quality monitor). Both
+own rates sit below the official published ones because of the counting unit — see
+characteristic 15.
 
 Measured over the standard analysis window, `delay_s` present, collector outage excluded:
 n = 9,784,009 (tram) and 5,458,881 (U-Bahn).
@@ -436,6 +441,67 @@ the public debate assumes.
 > Maps are produced by `scripts/karten_puenktlichkeit.py`, which writes the tram, U-Bahn and
 > combined variants. Labels are written in whole minutes, never seconds: a seconds figure
 > claims a resolution the data does not have.
+
+---
+
+### 15. External validation against the Senate's quality monitor
+
+`data/bvg/` holds monthly figures for all four contractual metrics (Jan 2025 – Jun 2026) plus
+their definitions. They are measured from BVG's own operating system, not from the public
+departure API — an entirely independent instrument on the same networks in the same months.
+`scripts/validierung_bvg.py` reproduces the comparison.
+
+**Contractual annual targets** (these supersede the 91 % / 97 % figures quoted in earlier
+drafts of this file, which were wrong):
+
+| Metric | U-Bahn | Tram | Bus |
+|---|---|---|---|
+| Pünktlichkeit | 98.70 % | **92.30 %** | 88.99 % (2025) / 89.40 % (2026) |
+| Verfrühungsvermeidung | 99.90 % | 99.00 % | 98.00 % |
+| Zuverlässigkeit | 99.70 % | 99.70 % | 99.80 % |
+| Regelmäßigkeit | 98.73 % (2025) / 98.90 % (2026) | 96.70 % | 94.40 % |
+
+**Comparison for the three overlapping months.** Own figures use the contract window
+(`≤ −120` / `≥ +240`); "amtlich" is the published monthly value.
+
+| Month | Metric | own, U-Bahn | official | own, Tram | official |
+|---|---|---|---|---|---|
+| Mai 26 | Pünktlichkeit | 97.35 % | 98.01 % | 84.44 % | 86.89 % |
+| Mai 26 | Verfrühungsvermeidung | 99.09 % | 99.78 % | 89.93 % | 97.14 % |
+| Mai 26 | Zuverlässigkeit | 98.94 % | 98.37 % | 99.60 % | 99.07 % |
+
+**The levels do not match, and they are not supposed to.** The monitor counts **per trip**,
+this dataset counts **per departure event at a stop**. A trip with thirty stops has thirty
+chances to fall outside the window, so own punctuality is systematically *lower*; conversely a
+cancelled trip vanishes from the feed rather than being counted, so own reliability is
+systematically *higher*. Both deviations are stable across months — punctuality −0.7 to
+−1.6 pp (U-Bahn) and −2.4 to −3.3 pp (tram), reliability +0.2 to +1.4 pp.
+
+**What does match is what the analysis actually claims — the distance between the networks:**
+
+| Metric | own gap (Tram − U-Bahn) | official gap | difference |
+|---|---|---|---|
+| Pünktlichkeit, Apr/Mai/Jun 26 | −12.1 / −12.9 / −14.5 pp | −11.0 / −11.1 / −12.8 pp | ≤ 1.8 pp |
+| Zuverlässigkeit, Apr/Mai/Jun 26 | +1.26 / +0.66 / +0.54 pp | +0.86 / +0.70 / +0.88 pp | ≤ 0.4 pp |
+
+The reliability row is the strongest single validation in the project, because it reproduces a
+**counter-intuitive** result: in these months the tram is *more* reliable than the U-Bahn — it
+cancels fewer trips. Both instruments agree on the direction and, in May, on the size to within
+0.04 pp. A pipeline that merely flattered the hypothesis would not do that.
+
+**Verfrühung is the exception and must be quoted as a ratio, never in percentage points.** In
+points the two sources diverge by a factor of three (own gap ≈ −9 pp, official ≈ −2.8 pp).
+As a ratio they agree, and the own measurement is the *conservative* one in every month:
+
+| Month | own ratio Tram : U-Bahn | official ratio |
+|---|---|---|
+| Apr 26 | 8.8× | 11.8× |
+| Mai 26 | 11.0× | 13.0× |
+| Jun 26 | 10.9× | 15.7× |
+
+**Regelmäßigkeit is not reproduced.** Its definition needs the line's headway per trip
+(`60 s – max. 10 min`); `src/analysis/takt.py` computes the effective headway per line, but the
+trip-to-headway assignment does not exist yet. It is the one contractual metric still open.
 
 ---
 
