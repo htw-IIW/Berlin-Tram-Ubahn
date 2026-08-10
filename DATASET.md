@@ -337,8 +337,9 @@ them into one number was the defect.
 
 ### 14. The punctuality window, and how it maps onto the official one
 
-Analyses in this project use **]−120 s, +180 s[** — a departure counts as outside the
-window at `delay_s ≤ −120` or `delay_s ≥ +180`.
+Analyses in this project use **]−120 s, +240 s[** — a departure counts as outside the
+window at `delay_s ≤ −120` or `delay_s ≥ +240`. Both bounds are the contract's own,
+translated onto the minute grid; neither is a judgement call of this project.
 
 Under the BVG transport contract, since **1 January 2025** a trip counts as punctual if it
 departs **between 60 s before and 210 s after** the published time; the early tolerance was
@@ -357,10 +358,39 @@ more than 60 s early  →  delay_s < −60  →  delay_s ≤ −120
 | Side | This project | Contract | Relationship |
 |---|---|---|---|
 | early | `≤ −120` | more than 60 s early | **identical** |
-| late | `≥ +180` | more than 210 s late (grid: `≥ +240`) | **stricter here** |
+| late | `≥ +240` | more than 210 s late | **identical under rounding** |
 
-So only the late side deviates, and it deviates in the conservative direction: three minutes
-instead of three and a half.
+**Why `≥ +240` and not `≥ +180`** (changed 10 Aug 2026). The contract boundary of 210 s falls
+between two grid steps, so which step is faithful depends on the API's rounding convention:
+
+| | step `180` represents | step `240` represents | verdict |
+|---|---|---|---|
+| API **rounds** | true 150–210 s → all **punctual** | true 210–270 s → all **late** | `240` is exact; `180` is plainly wrong |
+| API **truncates** | true 180–240 s → mixed | true 240–299 s → under-counts | `240` under-counts, `180` over-counts |
+
+`≥ +240` is therefore either exact or conservative — it can never overstate the gap between
+the networks. `≥ +180` would repeat, mirrored, the error that `≤ −60` made on the early side:
+counting departures that lie *inside* the window. Applying the same rule to both sides is what
+makes the window defensible as a whole.
+
+Effect of the late-side change:
+
+| | `≥ +180` | `≥ +240` |
+|---|---|---|
+| Tram late | 10.77 % | 6.23 % |
+| U-Bahn late | 4.02 % | 2.11 % |
+| ratio | 2.68× | **2.95×** |
+| **punctuality rate, tram** | 78.84 % | **83.38 %** (contract target 91 %) |
+| **punctuality rate, U-Bahn** | 95.00 % | **96.90 %** (contract target 97 %) |
+
+The last two rows are why this matters beyond tidiness: only at the contract threshold does the
+U-Bahn rate reproduce the officially published target (96.90 vs 97.0). That agreement is the
+strongest external validation available for this self-collected dataset — an independently
+measured pipeline landing on a figure it was never fitted to. At `≥ +180` the agreement
+disappears and the validation argument with it.
+
+Measured over the standard analysis window, `delay_s` present, collector outage excluded:
+n = 9,784,009 (tram) and 5,458,881 (U-Bahn).
 
 **Why not `≤ −60`** (used until 10 Aug 2026): it is *stricter* than the contract — it counts
 the −60 s grid value, which the contract still treats as punctual — and it is
@@ -386,15 +416,26 @@ Effect of the change:
 | Tram early | 19.3 % | 10.4 % |
 | U-Bahn early | 6.1 % | 1.0 % |
 | ratio | 3.1× | **10.2×** |
-| median share outside per stop (tram) | 28.3 % | 19.4 % |
-| stops predominantly early | 334 of 396 | 196 of 396 |
 
 The gap between the networks *widens*. Whether the U-Bahn's concentration on a single bucket
 is genuine dispatch behaviour or an artefact of its feed cannot be decided from these data.
 
-> Both variants are produced — `scripts/karten_zuverlaessigkeit.py` writes the maps at −60 s
-> and at −120 s, for tram and U-Bahn. Labels are written in whole minutes, never seconds: a
-> seconds figure claims a resolution the data does not have.
+**Per-stop figures under the full contract window** (`≤ −120` and `≥ +240`, stops with at
+least 1,000 departures):
+
+| | Tram (n = 396) | U-Bahn (n = 169) |
+|---|---|---|
+| median share outside the window | 15.6 % | 2.5 % |
+| range | 0.4 – 31.5 % | 0.0 – 8.4 % |
+| stops predominantly **early** rather than late | **307 of 396** | 31 of 169 |
+
+That last row is the sharpest single statement in the dataset: at roughly **four out of five
+tram stops the dominant failure is departing too early**, not too late — the opposite of what
+the public debate assumes.
+
+> Maps are produced by `scripts/karten_puenktlichkeit.py`, which writes the tram, U-Bahn and
+> combined variants. Labels are written in whole minutes, never seconds: a seconds figure
+> claims a resolution the data does not have.
 
 ---
 

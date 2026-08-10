@@ -92,11 +92,19 @@ def fuers_video(fig: go.Figure) -> go.Figure:
 # Tram-Abfahrten faellt von 19,3 % auf 10,4 %, der der U-Bahn von 6,1 % auf
 # 1,0 % — der Faktor zwischen den Netzen waechst dabei von 3,1 auf 10,4.
 #
-# Die Schwellen sind weiterhin mit Absicht NICHT symmetrisch. Begruendung siehe
-# notebooks/01_eda.ipynb, Abschnitt 3b: Eine Verfruehung kostet den ganzen Takt,
-# unabhaengig davon, wie gross sie ist — eine Verspaetung kostet nur ihre eigenen
-# Minuten. VERSPAETET_SCHWELLE_S = 180 bleibt strenger als der Vertrag, der erst
-# ab mehr als 210 s zaehlt (im Raster faktisch ab 240 s).
+# Seit dem 10.08.2026 folgt auch die Gegenseite demselben Prinzip: Der Vertrag
+# zaehlt ab mehr als 210 s, im Minutenraster ist das die Stufe 240 — sie steht
+# fuer echte 210–270 s und deckt damit genau alles ab 210 ab. Die frueher
+# benutzte 180 stand fuer echte 150–210 s, also fuer Fahrten INNERHALB des
+# Fensters. Beide Schwellen bilden jetzt das Vertragsfenster ab, keine ist mehr
+# eine eigene Setzung. Herleitung in quality.py bei VERSPAETET_SCHWELLE_S.
+#
+# Die Schwellen sind dabei zahlenmaessig weiterhin NICHT symmetrisch (-120 gegen
+# +240) — sie sind es aber inhaltlich, weil der Vertrag selbst unsymmetrisch ist
+# (60 s zu frueh gegen 210 s zu spaet). Die Begruendung fuer diese Asymmetrie
+# steht in notebooks/01_eda.ipynb, Abschnitt 3b: Eine Verfruehung kostet den
+# ganzen Takt, unabhaengig davon, wie gross sie ist — eine Verspaetung kostet nur
+# ihre eigenen Minuten.
 VERFRUEHT_SCHWELLE_S = -120
 
 # Netzfarben wie im ganzen Projekt. Auf Farbfehlsichtigkeit geprueft:
@@ -252,6 +260,184 @@ def richtungsvergleich(
                    zeroline=False, gridcolor="#eeeeee"),
         yaxis=dict(title="", categoryorder="array", categoryarray=reihenfolge,
                    range=[-1.35, 2.45], showgrid=False),
+        plot_bgcolor="white", height=430,
+    )
+    return fig
+
+
+# ── Tagesgang: Verfruehung gegen Verspaetung ─────────────────────────────────
+#
+# Warum diese Grafik existiert: Die beiden Abweichungsrichtungen haben
+# verschiedene Tageszeiten, und daraus folgen verschiedene Massnahmen. Die
+# Verspaetung folgt dem Strassenverkehr, die Verfruehung der Nebenverkehrszeit.
+# Eine gemeinsame Kennzahl ("Anteil ausserhalb des Fensters") wuerde beides
+# vermischen und das Bild flach machen.
+#
+# Nur die Tram. Die U-Bahn liegt in beiden Richtungen unter 4 % und waere als
+# dritte und vierte Linie nur Fuellung — der Netzvergleich ist an anderer Stelle
+# schon gefuehrt. Vier Linien auf 24 Stuetzstellen sind im Video ohnehin nicht
+# lesbar.
+#
+# Farben: dieselben wie auf den Karten (FARBE_FRUEH tuerkis, FARBE_SPAET orange).
+# Das ist Absicht — wer die Karte gesehen hat, liest die Linien ohne Legende.
+# Geprueft mit scripts/validate_palette.js des dataviz-Skills: Abstand 19,0
+# (OKLab x100) unter Protanopie, 35,2 unter Tritanopie, 30,2 bei normalem Sehen.
+# Alle drei weit ueber der Grenze von 8.
+#
+# ACHTUNG, anderer Filter als anteile_pro_richtung(): Hier wird das
+# Analysefenster inklusive Collector-Ausfall angewandt. Bei einer Auswertung nach
+# Tagesstunde ist das zwingend — waehrend des Ausfalls wurde unregelmaessig ueber
+# den Tag abgetastet, einzelne Stunden waeren dadurch verzerrt. Die Fallzahl
+# faellt dadurch von 11,4 auf 9,8 Mio.
+
+FARBE_TAG_FRUEH = "#0097A7"   # identisch mit karten.FARBE_FRUEH
+FARBE_TAG_SPAET = "#E65100"   # identisch mit karten.FARBE_SPAET
+
+# ── Was die Daten hier sagen, und was sie NICHT sagen ────────────────────────
+#
+# Die naheliegende Erwartung war: Verspaetung folgt dem Berufsverkehr, hat also
+# ihr Maximum am Nachmittag. Das stimmt fuer die Tram NICHT. Gemessen:
+#
+#   zu frueh  Maximum 15,3 % um 19 Uhr, Minimum  5,5 % um 22 Uhr
+#   zu spaet  Maximum  9,9 % um 22 Uhr, Minimum  2,5 % um  5 Uhr
+#
+# Der Nachmittag ist zwar ein lokales Hoch (15/16 Uhr: 8,1 / 8,2 %), aber nicht
+# das Maximum. Die Beschriftung darf deshalb nicht "am Nachmittag, mit dem
+# Strassenverkehr" behaupten — das waere eine Ursachenaussage, die die Kurve
+# nicht traegt.
+#
+# Der eigentliche Befund ist ein anderer und ein staerkerer: Die beiden Kurven
+# laufen GEGENEINANDER. Spearman ueber alle 24 Stunden rho = -0,480 (p = 0,018),
+# im Tagesverkehr 6-20 Uhr rho = -0,646 (p = 0,0092). Um 19 Uhr steht das
+# Verfruehungsmaximum ueber dem niedrigsten Verspaetungswert des Abends, um
+# 22 Uhr genau umgekehrt.
+#
+# Das ist die Signatur eines FAHRPLANS, dessen unterstellte Fahrzeiten je nach
+# Tageszeit zu grosszuegig oder zu knapp sind — nicht die Signatur einer
+# aeusseren Stoerung. Aeusserer Verkehr wuerde Verspaetung erzeugen, ohne die
+# Verfruehung im selben Mass zu druecken. Genau darauf zielt die
+# Handlungsempfehlung "realistische Fahrzeiten im Fahrplan".
+#
+# Zum Vergleich, weil es den Befund schaerft: Die U-BAHN zeigt das erwartete
+# Muster — ihr Verspaetungsmaximum liegt um 16 Uhr (3,5 %), also im
+# Berufsverkehr. Die Tram nicht.
+TEXTE_TAGESGANG = {
+    "titel": "Die Tram ist entweder zu früh oder zu spät — je nach Uhrzeit",
+    "untertitel": ("Anteil der Tram-Abfahrten außerhalb des Pünktlichkeitsfensters "
+                   "nach BVG-Verkehrsvertrag, je Tagesstunde. Die beiden Kurven "
+                   "laufen gegeneinander (Spearman −0,48)"),
+    "frueh": "zu früh",
+    "spaet": "zu spät",
+    "achse_x": "Tagesstunde",
+    "achse_y": "Anteil der Abfahrten (%)",
+    "hinweis_frueh": "die meisten Verfrühungen —<br>und zugleich wenig Verspätung",
+    "hinweis_spaet": "die meisten Verspätungen —<br>und die wenigsten Verfrühungen",
+}
+
+
+def tagesgang_anteile(
+    es,
+    index: str = "tram-departures-v2",
+    schwelle_frueh_s: int = VERFRUEHT_SCHWELLE_S,
+    schwelle_spaet_s: int = VERSPAETET_SCHWELLE_S,
+) -> pd.DataFrame:
+    """Anteil zu frueher und zu spaeter Abfahrten je Tagesstunde.
+
+    Rueckgabe: eine Zeile je Stunde mit `stunde`, `n`, `zu früh (%)`,
+    `zu spät (%)`.
+    """
+    from src.analysis.quality import analysefenster_query
+
+    frage = analysefenster_query()
+    frage["bool"].setdefault("filter", []).append({"exists": {"field": "delay_s"}})
+    antwort = es.search(
+        index=index, size=0, query=frage,
+        aggs={"stunden": {
+            "terms": {"field": "hour_of_day", "size": 24, "order": {"_key": "asc"}},
+            "aggs": {
+                "zu_frueh": {"filter": {"range": {"delay_s": {"lte": schwelle_frueh_s}}}},
+                "zu_spaet": {"filter": {"range": {"delay_s": {"gte": schwelle_spaet_s}}}},
+            },
+        }},
+    )
+    zeilen = []
+    for eimer in antwort["aggregations"]["stunden"]["buckets"]:
+        n = eimer["doc_count"]
+        zeilen.append({
+            "stunde": eimer["key"], "n": n,
+            "zu früh (%)": eimer["zu_frueh"]["doc_count"] / n * 100,
+            "zu spät (%)": eimer["zu_spaet"]["doc_count"] / n * 100,
+        })
+    return pd.DataFrame(zeilen).sort_values("stunde").reset_index(drop=True)
+
+
+def tagesgang(
+    werte: pd.DataFrame,
+    schwelle_frueh_s: int = VERFRUEHT_SCHWELLE_S,
+    schwelle_spaet_s: int = VERSPAETET_SCHWELLE_S,
+) -> go.Figure:
+    """Zwei Linien ueber 24 Stunden, gemeinsame Achse.
+
+    Beide Reihen sind Anteile derselben Grundgesamtheit und teilen sich deshalb
+    eine einzige y-Achse. Eine zweite Achse waere hier der klassische Fehler: Sie
+    liesse den Massstab frei waehlbar und damit jede gewuenschte Kreuzung der
+    beiden Linien erzeugen.
+    """
+    fig = go.Figure()
+    for spalte, farbe, name in (
+        ("zu früh (%)", FARBE_TAG_FRUEH, TEXTE_TAGESGANG["frueh"]),
+        ("zu spät (%)", FARBE_TAG_SPAET, TEXTE_TAGESGANG["spaet"]),
+    ):
+        fig.add_trace(go.Scatter(
+            x=werte["stunde"], y=werte[spalte], name=name,
+            mode="lines+markers", line=dict(color=farbe, width=3),
+            marker=dict(size=8, color=farbe,
+                        line=dict(width=2, color="white")),
+            hovertemplate=f"%{{x}} Uhr — {name} %{{y:.1f}} %<extra></extra>",
+        ))
+
+    # Direktbeschriftung am jeweiligen Maximum. Die Position kommt aus den Daten,
+    # damit sie nicht stehen bleibt, wenn die Erhebung weiterlaeuft und das
+    # Maximum auf eine andere Stunde wandert.
+    #
+    # Die Versaetze sind gegen die Kurven geprueft, nicht geraten: Beide Marken
+    # liegen im leeren Bereich oberhalb der jeweils anderen Linie. ay ist in
+    # plotly nach UNTEN positiv — negative Werte heben die Marke an.
+    for spalte, farbe, text, ax_px, ay_px in (
+        ("zu früh (%)", FARBE_TAG_FRUEH, TEXTE_TAGESGANG["hinweis_frueh"], -95, -45),
+        ("zu spät (%)", FARBE_TAG_SPAET, TEXTE_TAGESGANG["hinweis_spaet"], -55, -70),
+    ):
+        i = werte[spalte].idxmax()
+        fig.add_annotation(
+            x=werte.loc[i, "stunde"], y=werte.loc[i, spalte],
+            text=f"<b>{werte.loc[i, 'stunde']} Uhr</b><br>{text}",
+            showarrow=True, arrowhead=0, arrowwidth=2, arrowcolor=farbe,
+            ax=ax_px, ay=ay_px, font=dict(size=14, color=farbe),
+            align="center", bgcolor="rgba(255,255,255,0.88)", borderpad=4,
+        )
+
+    # Kopfraum fuer die beiden Marken. Ohne ihn setzt plotly die Achse knapp
+    # oberhalb des Maximums, und die obere Beschriftung wird am Rand abgeschnitten
+    # — der Fehler faellt im PNG erst auf, wenn man es ansieht.
+    hoechster = max(werte["zu früh (%)"].max(), werte["zu spät (%)"].max())
+
+    fig.update_layout(
+        title=dict(text=(f"<b>{TEXTE_TAGESGANG['titel']}</b><br>"
+                         f"<span style='font-size:15px;color:#616161'>"
+                         f"{TEXTE_TAGESGANG['untertitel']}<br>"
+                         f"zu früh ab {_dauer(schwelle_frueh_s)}, zu spät ab "
+                         f"{_dauer(schwelle_spaet_s)}</span>"),
+                   x=0.01, xanchor="left"),
+        xaxis=dict(title=TEXTE_TAGESGANG["achse_x"], dtick=2, showgrid=False,
+                   ticksuffix=" h", zeroline=False),
+        yaxis=dict(title=TEXTE_TAGESGANG["achse_y"], range=[0, hoechster * 1.22],
+                   gridcolor="#ECEFF1", zeroline=False, ticksuffix=" %"),
+        # Legende unten links im Bild: Der Bereich zwischen 0 und 8 Uhr liegt
+        # unterhalb von 2,5 % und ist bei beiden Reihen frei. Oben rechts waere
+        # sie in den Untertitel gelaufen.
+        legend=dict(orientation="h", yanchor="bottom", y=0.02,
+                    xanchor="left", x=0.01,
+                    bgcolor="rgba(255,255,255,0.88)"),
         plot_bgcolor="white", height=430,
     )
     return fig

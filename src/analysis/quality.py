@@ -90,10 +90,53 @@ DELAY_QUANTISIERUNG_S = 60
 # das Minimum liegt bei -4020 s, das Maximum bei +3540 s.
 DELAY_CLIP_S = 600
 
-# Schwelle für "spürbar verspätet". 180 s entspricht drei Quantisierungs-
-# stufen und liegt oberhalb des 75.-Perzentils beider Netze — damit ist der
-# Anteil darüber eine robuste, quantisierungsfeste Kennzahl.
-VERSPAETET_SCHWELLE_S = 180
+# Schwelle für "verspätet" nach dem BVG-Verkehrsvertrag.
+#
+# Geändert am 10.08.2026 von 180 auf 240 s. Vorher war 180 als "drei
+# Quantisierungsstufen, oberhalb des 75.-Perzentils" begründet — eine
+# datengetriebene, aber willkürliche Wahl. Seit die Auswertung Quoten gegen die
+# vertraglich vereinbarten Zielwerte stellt (Tram 91 %, U-Bahn 97 %), muss die
+# Schwelle die des Vertrags sein, sonst vergleicht man gegen ein verschobenes
+# Ziel.
+#
+# ── Warum 240 und nicht 180 ──────────────────────────────────────────────────
+#
+# Der Verkehrsvertrag zieht die Grenze bei 210 s. Die Daten liegen im
+# Minutenraster, 210 liegt also zwischen zwei Stufen. Liest man das Raster als
+# gerundet, gilt:
+#
+#     Stufe 180  steht für echte 150–210 s   -> vollständig PÜNKTLICH
+#     Stufe 240  steht für echte 210–270 s   -> vollständig VERSPÄTET
+#
+# 240 deckt damit exakt alles ab 210 ab und nichts darunter. 180 würde Fahrten
+# als verspätet zählen, die im Fenster liegen — derselbe Fehler wie -60 auf der
+# Verfrühungsseite (siehe VERFRUEHT_SCHWELLE_S in grafiken.py), nur
+# spiegelverkehrt.
+#
+# Schneidet die API ab, statt zu runden, steht Stufe 240 für echte 240–299 s;
+# dann fehlen der Schwelle die Fälle zwischen 210 und 240. Sie zählt in diesem
+# Fall zu WENIG Verspätung. Die Schwelle kann den gemessenen Abstand zwischen
+# den Netzen also nie übertreiben, nur unterschätzen — für die Argumentation
+# die sichere Richtung.
+#
+# ── Was sich dadurch ändert ──────────────────────────────────────────────────
+#
+#                            bei 180 s      bei 240 s
+#   Tram, Anteil verspätet     10,77 %        6,23 %
+#   U-Bahn, Anteil verspätet    4,02 %        2,11 %
+#   Faktor Tram : U-Bahn         2,68x         2,95x
+#   Pünktlichkeitsquote Tram   78,84 %       83,38 %   (Vertragsziel 91 %)
+#   Pünktlichkeitsquote U-Bahn 95,00 %       96,90 %   (Vertragsziel 97 %)
+#
+# Erst mit 240 reproduziert die U-Bahn den amtlichen Zielwert (96,90 gegen 97,0)
+# — die externe Validierung der gesamten Erhebung. Die Anteile beider Netze
+# sinken, das Verhältnis zwischen ihnen wird dabei sogar größer.
+#
+# ACHTUNG, Nebenwirkung: Notebook 06 benutzt die Schwelle als Zielklasse des
+# Vorhersagemodells (df["verspaetet"]). Die Klasse wird dadurch kleiner und
+# damit unbalancierter; Trefferquoten des Modells sind mit älteren Läufen nicht
+# vergleichbar.
+VERSPAETET_SCHWELLE_S = 240
 
 
 # ── 3. Betriebliche Haltestellen ─────────────────────────────────────────────

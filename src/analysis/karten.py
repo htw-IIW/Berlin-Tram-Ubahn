@@ -105,12 +105,28 @@ def radius_aus_anteil(wert: float, hoechstwert: float,
 # liest ohnehin in Klassen — "klein", "mittel", "gross".
 #
 # Feste Stufen machen daraus eine Aussage, die man auch aussprechen kann:
-# "die grossen Kreise sind die Halte mit ueber 40 Prozent". Zusaetzlich haengt
+# "die grossen Kreise sind die Halte mit ueber 20 Prozent". Zusaetzlich haengt
 # das Bild damit nicht mehr am 95. Perzentil der gerade geladenen Daten — bei
 # laufender Erhebung wanderte die Skala sonst bei jedem Durchlauf.
 #
+# Stufenweite am 10.08.2026 von 10 auf 5 Prozentpunkte halbiert. Grund: Mit dem
+# Vertragsfenster (-120 / +240 statt -120 / +180) reicht die Spanne der Tram nur
+# noch von 0,4 % bis 31,5 % statt bis ueber 40 %. Unter der alten Einteilung
+# lagen 227 von 396 Halten in einer einzigen Stufe, die oberste blieb leer — die
+# Legende versprach eine Klasse, die es nicht gab, und der groesste sichtbare
+# Kreis sah dadurch mittelmaessig aus.
+#
+# Besetzung unter der jetzigen Einteilung:
+#
+#            < 5 %   5-10   10-15   15-20   > 20 %
+#   Tram        34     50     101     126       85
+#   U-Bahn     149     20       0       0        0
+#
+# Die U-Bahn bleibt damit sichtbar am unteren Ende — der Groessenkontrast, der
+# die Aussage der Karte traegt, bleibt erhalten und wird sogar etwas feiner.
+#
 # (Untergrenze in Prozentpunkten, Radius in Pixeln)
-STUFEN_ANTEIL = [(0, 5), (10, 9), (20, 13), (30, 18), (40, 24)]
+STUFEN_ANTEIL = [(0, 5), (5, 9), (10, 13), (15, 18), (20, 24)]
 
 
 def radius_gestuft(anteil: float, stufen=STUFEN_ANTEIL) -> float:
@@ -343,13 +359,25 @@ def _fussnote_fenster(schwelle_frueh_s: int, schwelle_spaet_s: int) -> str:
     Das ist eine getreue, eher zu vorsichtige Umsetzung — wir zaehlen eher zu
     wenige Verfruehungen als zu viele.
 
-    SPAET — "mehr als 210 s" liegt EXAKT ZWISCHEN den Rasterstufen 180 und 240.
-    Es gibt hier also keine getreue Umsetzung: >= 240 zaehlt weniger als der
-    Vertrag, >= 180 zaehlt mehr. Die 180 ist eine bewusste Verschaerfung und
-    darf nicht als Rundungsfolge ausgegeben werden.
+    SPAET — "mehr als 210 s" liegt zwischen den Rasterstufen 180 und 240.
+    Welche der beiden getreu ist, haengt an der Rundungskonvention:
+
+        rundet die API   Stufe 180 = echte 150-210 s  -> ganz IM Fenster
+                         Stufe 240 = echte 210-270 s  -> ganz AUSSERHALB
+                         => 240 ist exakt die Vertragsgrenze
+
+        schneidet sie ab Stufe 180 = echte 180-240 s  -> gemischt
+                         Stufe 240 = echte 240-299 s  -> zu wenig
+                         => 240 unterzaehlt, 180 ueberzaehlt
+
+    Gewaehlt ist 240 (Stand 10.08.2026). Es ist unter der einen Lesart exakt
+    und unter der anderen zu vorsichtig — es kann den Abstand zwischen den
+    Netzen also nie uebertreiben. 180 waere unter der Rundungslesart schlicht
+    falsch: Es zaehlte Fahrten als verspaetet, die im Fenster liegen. Damit
+    folgen beide Seiten derselben Regel wie -120 auf der Verfruehungsseite.
 
     Gegenprobe, damit die Wahl nicht das Ergebnis traegt: Der Abstand zwischen
-    den Netzen betraegt bei 180 s das 2,65-fache und bei 240 s das 2,90-fache —
+    den Netzen betraegt bei 180 s das 2,68-fache und bei 240 s das 2,95-fache —
     mit der amtlichen Stufe wird der Unterschied groesser, nicht kleiner.
     """
     zeilen = ["Anteil aller Abfahrten außerhalb des Pünktlichkeitsfensters."]
@@ -362,7 +390,11 @@ def _fussnote_fenster(schwelle_frueh_s: int, schwelle_spaet_s: int) -> str:
         zeilen.append(f"<b>zu früh:</b> ab {_minuten(schwelle_frueh_s)}. Der "
                       "Verkehrsvertrag zählt ab mehr als 1 Minute.")
 
-    if schwelle_spaet_s == 180:
+    if schwelle_spaet_s == 240:
+        zeilen.append("<b>zu spät:</b> Verspätung nach BVG-Verkehrsvertrag — "
+                      "mehr als 3½ Minuten; im Minutenraster der Daten die "
+                      "Stufe ab 4 Minuten.")
+    elif schwelle_spaet_s == 180:
         zeilen.append("<b>zu spät:</b> ab 3 Minuten — strenger als der Vertrag, "
                       "der ab 3½ Minuten zählt.")
     else:
