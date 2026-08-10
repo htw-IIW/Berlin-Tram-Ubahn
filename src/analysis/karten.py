@@ -433,6 +433,158 @@ def zuverlaessigkeitskarte(stops, schwelle_frueh_s: int, schwelle_spaet_s: int,
     return karte, daten
 
 
+# Netzfarben fuer die gemeinsame Karte. Bewusst DIESELBEN wie im
+# Balkendiagramm aus src/analysis/grafiken.py.
+#
+# Auf den Einzelnetzkarten waere Rot/Blau falsch — dort traegt die Farbe die
+# Richtung (zu frueh / zu spaet), und blaue Punkte auf einer reinen Tramkarte
+# haette man als U-Bahn-Stationen lesen koennen. Auf der gemeinsamen Karte ist
+# genau umgekehrt Rot/Blau richtig: Beide Netze sind im Bild, Blau IST die
+# U-Bahn, und die Karte spricht dieselbe Farbsprache wie das Balkendiagramm.
+#
+# Geprueft: Abstand 26,4 unter Protanopie, 36 unter Tritanopie.
+FARBE_NETZ = {"Tram": "#E53935", "U-Bahn": "#1E88E5"}
+
+
+def netzvergleichskarte(je_netz: dict, schwelle_frueh_s: int,
+                        schwelle_spaet_s: int,
+                        min_abfahrten: int = MIN_ABFAHRTEN, zoom: int = 11):
+    """Beide Netze auf einer Karte: Farbe = Netz, Groesse = Anteil ausserhalb.
+
+    `je_netz` ist {"Tram": DataFrame, "U-Bahn": DataFrame} aus
+    anteile_je_haltestelle().
+
+    ── Warum hier keine Richtungsfarbe ──────────────────────────────────────
+    Zwei kategoriale Farbbedeutungen auf einer Karte sind nicht lesbar. Die
+    Richtung (zu frueh / zu spaet) bleibt deshalb den Einzelnetzkarten
+    vorbehalten; hier traegt die Farbe das Netz, weil das die Aussage ist.
+
+    ── Warum keine Formkodierung ────────────────────────────────────────────
+    Naheliegend waere, das Netz zusaetzlich ueber die Form zu unterscheiden
+    (Kreis gegen Quadrat, oder gerade gegen 45 Grad gedreht). Das traegt hier
+    nicht: 166 der 169 U-Bahn-Stationen liegen in der kleinsten Groessenstufe,
+    und bei 5 Pixeln ist ein Quadrat von einem Kreis nicht zu unterscheiden.
+    Form wirkt nur bei grossen Symbolen — also genau dort, wo die U-Bahn keine
+    hat. Die Farbe traegt die Unterscheidung allein und besteht die
+    Farbfehlsichtigkeitspruefung.
+
+    ── Zeichenreihenfolge, zweistufig ───────────────────────────────────────
+    An Umsteigepunkten wie U Rosa-Luxemburg-Platz oder U Eberswalder Str.
+    liegen Tramhalt und U-Bahn-Station bei **0 m** Abstand exakt uebereinander.
+    Ohne Vorkehrung verschwindet der kleine blaue Punkt unter dem grossen roten,
+    und die Karte zeigt die U-Bahn ausgerechnet dort nicht, wo der Vergleich am
+    schaerfsten ist. Zwei Dinge sorgen dafuer, dass das nicht passiert:
+
+    1. INNERHALB eines Netzes werden grosse Kreise zuerst gezeichnet.
+    2. ZWISCHEN den Netzen entscheidet die Reihenfolge der Leaflet-Ebenen, denn
+       jedes Netz ist eine eigene FeatureGroup — die zuletzt hinzugefuegte
+       liegt oben. Das Netz mit den kleineren Kreisen kommt deshalb zuletzt,
+       ermittelt aus den Daten und nicht aus der Reihenfolge im Dictionary.
+
+    ── Was diese Karte NICHT zeigt ──────────────────────────────────────────
+    Die Netze ueberlappen sich raeumlich kaum: Der Median-Abstand einer
+    U-Bahn-Station zum naechsten Tramhalt betraegt 2,6 km, 59 % liegen weiter
+    als 2 km entfernt, die Schwerpunkte sind 7,9 km auseinander (Tram Osten,
+    U-Bahn Westen). Die Karte stellt deshalb ueberwiegend zwei benachbarte
+    Gebiete nebeneinander, nicht denselben Ort zweimal. Wer aus ihr allein
+    schliesst, ist gegen den Einwand "das ist Ost gegen West, nicht Tram gegen
+    U-Bahn" wehrlos. Die Antwort darauf liefert `gepaarte_standorte()`.
+    """
+    import folium
+
+    karte = None
+    marker = []
+    for netz, stops in je_netz.items():
+        daten = stops[stops["count"] >= min_abfahrten]
+        for zeile in daten.itertuples():
+            marker.append((radius_gestuft(zeile.anteil_ausserhalb), netz, zeile))
+
+    mitte_lat = sum(m[2].lat for m in marker) / len(marker)
+    mitte_lon = sum(m[2].lon for m in marker) / len(marker)
+    karte = folium.Map(location=[mitte_lat, mitte_lon], zoom_start=zoom,
+                       tiles="CartoDB positron")
+    gruppen = {netz: folium.FeatureGroup(name=netz, show=True)
+               for netz in je_netz}
+
+    for radius, netz, zeile in sorted(marker, key=lambda m: -m[0]):
+        folium.CircleMarker(
+            location=[zeile.lat, zeile.lon], radius=radius,
+            color="#37474F", weight=1, fill=True,
+            fill_color=FARBE_NETZ[netz], fill_opacity=0.85,
+            tooltip=(f"<b>{zeile.stop_name}</b><br>{netz}<br>"
+                     f"außerhalb des Fensters: "
+                     f"<b>{zeile.anteil_ausserhalb:.1f} %</b><br>"
+                     f"davon zu früh: {zeile.anteil_frueh:.1f} %<br>"
+                     f"davon zu spät: {zeile.anteil_spaet:.1f} %<br>"
+                     f"n: {int(zeile.count):,}"),
+        ).add_to(gruppen[netz])
+
+    # Netz mit den kleineren Kreisen zuletzt hinzufuegen, damit es oben liegt.
+    mittlerer_radius = {
+        netz: sum(r for r, n, _ in marker if n == netz)
+              / max(sum(1 for _, n, _ in marker if n == netz), 1)
+        for netz in je_netz
+    }
+    for netz in sorted(gruppen, key=lambda n: -mittlerer_radius[n]):
+        gruppen[netz].add_to(karte)
+    folium.LayerControl(collapsed=False).add_to(karte)
+    karte.get_root().html.add_child(folium.Element(legende(
+        titel="Tram gegen U-Bahn",
+        bloecke=[
+            ("Farbe — Netz", [(punkt(FARBE_NETZ[n]), n) for n in je_netz]),
+            ("Kreisgröße — außerhalb des Pünktlichkeitsfensters",
+             stufen_legende()),
+        ],
+        fuss=_fussnote_fenster(schwelle_frueh_s, schwelle_spaet_s),
+    )))
+    return karte
+
+
+def gepaarte_standorte(tram, ubahn, radius_m: float = 300,
+                       min_abfahrten: int = MIN_ABFAHRTEN):
+    """U-Bahn-Stationen mit einem Tramhalt in Reichweite — der gepaarte Vergleich.
+
+    Die gemeinsame Karte hat ein Konfundierungsproblem: Tram und U-Bahn
+    bedienen weitgehend verschiedene Stadthaelften, also vergleicht man mit ihr
+    auch Ost gegen West. Diese Funktion loest das, indem sie nur Standorte
+    heranzieht, an denen beide Netze **denselben Ort** bedienen — viele Paare
+    liegen bei 0 m Abstand, es ist derselbe Umsteigepunkt.
+
+    Gleiche Lage, gleiche Fahrgaeste, gleiche Stadtstruktur, gleicher Zeitraum:
+    Was uebrig bleibt, ist das Verkehrsmittel.
+
+    Rueckgabe: DataFrame mit einer Zeile je Paar.
+    """
+    import numpy as np
+    import pandas as pd
+
+    t = tram[tram["count"] >= min_abfahrten].reset_index(drop=True)
+    u = ubahn[ubahn["count"] >= min_abfahrten]
+    breite, laenge = t["lat"].to_numpy(), t["lon"].to_numpy()
+
+    zeilen = []
+    for station in u.itertuples():
+        d = np.sqrt(((breite - station.lat) * 111_320) ** 2
+                    + ((laenge - station.lon) * 111_320
+                       * np.cos(np.radians(station.lat))) ** 2)
+        i = int(d.argmin())
+        if d[i] > radius_m:
+            continue
+        zeilen.append({
+            "station": station.stop_name,
+            "ubahn_pct": station.anteil_ausserhalb,
+            "tramhalt": t.loc[i, "stop_name"],
+            "tram_pct": t.loc[i, "anteil_ausserhalb"],
+            "abstand_m": float(d[i]),
+        })
+
+    df = pd.DataFrame(zeilen)
+    if not df.empty:
+        df["differenz_pp"] = df["tram_pct"] - df["ubahn_pct"]
+        df = df.sort_values("differenz_pp", ascending=False).reset_index(drop=True)
+    return df
+
+
 def lsa_statuskarte(stops, schwelle_frueh_s: int, schwelle_spaet_s: int,
                     min_abfahrten: int = MIN_ABFAHRTEN, zoom: int = 12):
     """Gleiche Geometrie und Kreisgroesse, Farbe nach ÖPNV-Beeinflussung.
