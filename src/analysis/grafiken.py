@@ -65,14 +65,39 @@ def fuers_video(fig: go.Figure) -> go.Figure:
 # das keine zentrale Projektkonstante, weil nur die Verfruehungsanalyse sie
 # braucht — der Wert steht deshalb hier und nicht in quality.py.
 #
-# Die Schwellen sind mit Absicht NICHT symmetrisch. Begruendung siehe
+# ── Warum -120 und nicht -60 (geaendert am 10.08.2026) ───────────────────────
+#
+# Der BVG-Verkehrsvertrag zaehlt eine Abfahrt seit dem 01.01.2025 als unpuenktlich
+# verfrueht, wenn sie **mehr als 60 Sekunden** vor der Fahrplanzeit stattfindet —
+# also echt kleiner als -60. Weil delay_s minutenquantisiert ist (DATASET.md
+# Nr. 1: alle Werte sind Vielfache von 60), ist der naechste moegliche Wert
+# unterhalb von -60 genau -120:
+#
+#     mehr als 60 s zu frueh  ->  delay_s < -60  ->  delay_s <= -120
+#
+# -120 ist damit die woertliche Umsetzung der amtlichen Regel, keine Naeherung.
+#
+# Bis zum 10.08.2026 stand hier -60. Das war aus zwei Gruenden schlechter:
+#
+# 1. Es war STRENGER als der Vertrag, nicht lockerer — die Grenze schliesst den
+#    Rasterwert -60 mit ein, den der Vertrag noch als puenktlich fuehrt.
+# 2. Es war rundungsanfaellig. 45,8 % aller verfruehten Tram-Abfahrten liegen
+#    exakt auf -60, und dieser eine Rasterwert kann eine echte Verfruehung von
+#    wenigen Sekunden bedeuten. Fast die halbe Kennzahl haette damit an einer
+#    Rundung gehangen, die aus den Daten nicht aufloesbar ist: `when` und
+#    `planned_when` tragen ueber alle 13,2 Mio. Dokumente ausschliesslich die
+#    Sekunde 0.
+#
+# Folgen der Umstellung, damit sie nicht ueberrascht: Der Anteil verfruehter
+# Tram-Abfahrten faellt von 19,3 % auf 10,4 %, der der U-Bahn von 6,1 % auf
+# 1,0 % — der Faktor zwischen den Netzen waechst dabei von 3,1 auf 10,4.
+#
+# Die Schwellen sind weiterhin mit Absicht NICHT symmetrisch. Begruendung siehe
 # notebooks/01_eda.ipynb, Abschnitt 3b: Eine Verfruehung kostet den ganzen Takt,
 # unabhaengig davon, wie gross sie ist — eine Verspaetung kostet nur ihre eigenen
-# Minuten. Zusaetzlich ist delay_s minutenquantisiert (DATASET.md, Known Data
-# Characteristic 1); die Klasse "mindestens eine Minute zu spaet" besteht deshalb
-# zu grossen Teilen aus Abweichungen unter einer Minute, die auf 60 s gerundet
-# wurden. Drei Minuten liegen drei Rasterschritte davon entfernt.
-VERFRUEHT_SCHWELLE_S = -60
+# Minuten. VERSPAETET_SCHWELLE_S = 180 bleibt strenger als der Vertrag, der erst
+# ab mehr als 210 s zaehlt (im Raster faktisch ab 240 s).
+VERFRUEHT_SCHWELLE_S = -120
 
 # Netzfarben wie im ganzen Projekt. Auf Farbfehlsichtigkeit geprueft:
 # Abstand 26 (OKLab x100) unter Protanopie, 36 unter Tritanopie — beides weit
@@ -173,15 +198,26 @@ def richtungsvergleich(
     schritt = 5 if grenze <= 25 else 10
     ticks = [t for t in range(-int(grenze), int(grenze) + 1, schritt)]
 
+    # Ein Balken muss breit genug sein, damit die Beschriftung hineinpasst.
+    # Bei der U-Bahn und der Zwei-Minuten-Schwelle sind es 1,0 % — der Balken ist
+    # dann schmaler als der Text "1,0 %", und plotly setzt ihn trotzdem hinein,
+    # wo er links und rechts ueberlaeuft. Unterhalb dieses Anteils der Achse
+    # wandert die Zahl deshalb nach aussen und wechselt die Schriftfarbe.
+    MINDESTBREITE = 0.10
+
     fig = go.Figure()
     for spalte, vorzeichen, richtung in [("zu früh (%)", -1, "zu früh"),
                                          ("zu spät (%)", +1, "zu spät")]:
+        innen = [v / grenze >= MINDESTBREITE for v in werte[spalte]]
         fig.add_trace(go.Bar(
             y=reihenfolge, x=vorzeichen * werte[spalte], orientation="h",
             width=0.52, marker_color=farben, showlegend=False,
             text=[f"{_de(v)} %" for v in werte[spalte]],
-            textposition="inside", insidetextanchor="middle",
-            textfont=dict(size=15, color="white"),
+            textposition=["inside" if i else "outside" for i in innen],
+            insidetextanchor="middle",
+            textfont=dict(size=15,
+                          color=["white" if i else "#424242" for i in innen]),
+            cliponaxis=False,
             hovertemplate="%{y}: %{text} " + richtung + "<extra></extra>",
         ))
 

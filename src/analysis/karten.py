@@ -311,34 +311,84 @@ def anteile_je_haltestelle(es, index: str, schwelle_frueh_s: int,
     return pd.DataFrame(zeilen).dropna(subset=["avg_delay_s"])
 
 
-def _fussnote_fenster(schwelle_frueh_s: int, schwelle_spaet_s: int) -> str:
-    """Erklaert das Fenster UND seine Abweichung vom amtlichen.
+def _minuten(sekunden: int) -> str:
+    """„2 Minuten" statt „120 s".
 
-    Die Abweichung gehoert ins Bild, nicht nur in die Dokumentation: Das hier
-    benutzte Fenster ist enger als das der BVG, die Anteile fallen dadurch
-    ungefaehr doppelt so hoch aus. Wer die Karte ohne diesen Hinweis zeigt,
-    stellt eine Zahl neben eine amtliche, die anders gerechnet ist.
+    Sekundenzahlen gehoeren nicht ins Bild. delay_s ist minutenquantisiert
+    (DATASET.md Nr. 1) — eine Sekundenangabe behauptet eine Aufloesung, die die
+    Daten nicht haben. Das Raster kennt nur ganze Minuten, also wird auch nur
+    in ganzen Minuten beschriftet.
     """
-    hinweis = ""
-    if (schwelle_frueh_s, schwelle_spaet_s) == (-60, 180):
-        hinweis = (" Bewusst enger als das amtliche Fenster "
-                   "]−90 s, +210 s[ — die Anteile fallen dadurch rund doppelt "
-                   "so hoch aus wie in der BVG-Statistik.")
-    # Typografisches Minuszeichen, damit es neben dem +180 nicht wie ein
-    # Bindestrich aussieht. Die Grafik geht so ins Video.
-    frueh = f"{schwelle_frueh_s}".replace("-", "−")
-    return (f"Anteil aller Abfahrten außerhalb ]{frueh} s, "
-            f"+{schwelle_spaet_s} s[.{hinweis}")
+    n = abs(int(sekunden)) // 60
+    return f"{n} Minute" if n == 1 else f"{n} Minuten"
 
 
+def _fussnote_fenster(schwelle_frueh_s: int, schwelle_spaet_s: int) -> str:
+    """Schreibt das Fenster aus und ordnet jede Seite gegen den Vertrag ein.
+
+    Die Einordnung gehoert ins Bild, nicht nur in die Dokumentation: Sobald eine
+    Zahl von hier neben einer veroeffentlichten BVG-Zahl steht, muss erkennbar
+    sein, ob gleich gerechnet wurde.
+
+    ── Die beiden Seiten sind NICHT symmetrisch ────────────────────────────────
+
+    BVG-Verkehrsvertrag seit 01.01.2025: puenktlich ist eine Abfahrt zwischen
+    60 s vor und 210 s nach der Sollzeit. delay_s kennt nur Vielfache von 60
+    (DATASET.md Nr. 1), und daraus folgt fuer die beiden Seiten Verschiedenes:
+
+    FRUEH — "mehr als 60 s zu frueh" heisst delay_s < -60, im Raster also
+    <= -120. Die Stufe -60 ist mehrdeutig: Je nach Rundungskonvention der
+    Schnittstelle steht sie fuer 1-60 s oder fuer 31-89 s Verfruehung. -120 ist
+    damit die groesste Menge, die die amtliche Bedingung *garantiert* erfuellt.
+    Das ist eine getreue, eher zu vorsichtige Umsetzung — wir zaehlen eher zu
+    wenige Verfruehungen als zu viele.
+
+    SPAET — "mehr als 210 s" liegt EXAKT ZWISCHEN den Rasterstufen 180 und 240.
+    Es gibt hier also keine getreue Umsetzung: >= 240 zaehlt weniger als der
+    Vertrag, >= 180 zaehlt mehr. Die 180 ist eine bewusste Verschaerfung und
+    darf nicht als Rundungsfolge ausgegeben werden.
+
+    Gegenprobe, damit die Wahl nicht das Ergebnis traegt: Der Abstand zwischen
+    den Netzen betraegt bei 180 s das 2,65-fache und bei 240 s das 2,90-fache —
+    mit der amtlichen Stufe wird der Unterschied groesser, nicht kleiner.
+    """
+    zeilen = ["Anteil aller Abfahrten außerhalb des Pünktlichkeitsfensters."]
+
+    if schwelle_frueh_s == -120:
+        zeilen.append("<b>zu früh:</b> Verfrühung nach BVG-Verkehrsvertrag — "
+                      "mehr als 1 Minute; im Minutenraster der Daten die Stufe "
+                      "ab 2 Minuten.")
+    else:
+        zeilen.append(f"<b>zu früh:</b> ab {_minuten(schwelle_frueh_s)}. Der "
+                      "Verkehrsvertrag zählt ab mehr als 1 Minute.")
+
+    if schwelle_spaet_s == 180:
+        zeilen.append("<b>zu spät:</b> ab 3 Minuten — strenger als der Vertrag, "
+                      "der ab 3½ Minuten zählt.")
+    else:
+        zeilen.append(f"<b>zu spät:</b> ab {_minuten(schwelle_spaet_s)}.")
+
+    return " ".join(zeilen)
+
+
+# Der Kartentitel heisst NICHT "Zuverlaessigkeit". Im BVG-Verkehrsvertrag ist das
+# ein eigener, anders definierter Begriff: Anteil der tatsaechlich erbrachten an
+# allen bestellten Fahrten, Zielwert 99,7 % fuer Tram und U-Bahn — also Ausfaelle,
+# nicht Puenktlichkeit. Diese Karte zeigt den Anteil ausserhalb des
+# PUENKTLICHKEITSfensters. Denselben Fehler hatte das Projekt schon einmal bei
+# "Vorrang" gegen "Beeinflussung"; amtliche Begriffe werden hier nicht umgedeutet.
 def zuverlaessigkeitskarte(stops, schwelle_frueh_s: int, schwelle_spaet_s: int,
-                           titel: str = "Zuverlässigkeit",
+                           titel: str = "Außerhalb des Pünktlichkeitsfensters",
                            min_abfahrten: int = MIN_ABFAHRTEN,
                            zoom: int = 12):
     """Kreisgroesse = Anteil ausserhalb, Farbe = welche Richtung ueberwiegt."""
     import folium
 
     daten = stops[stops["count"] >= min_abfahrten].copy()
+    # Immer neu ableiten statt auf eine mitgelieferte Spalte zu vertrauen: Ein
+    # Aufrufer, der die Anteile selbst zusammengestellt hat, brachte sie sonst
+    # nicht mit, und die Funktion scheiterte erst mitten im Zeichnen.
+    daten["uebergewicht"] = daten["anteil_spaet"] - daten["anteil_frueh"]
     spanne = daten["uebergewicht"].abs().quantile(0.95) or 1.0
 
     karte = folium.Map(location=[daten["lat"].mean(), daten["lon"].mean()],
@@ -375,7 +425,8 @@ def zuverlaessigkeitskarte(stops, schwelle_frueh_s: int, schwelle_spaet_s: int,
                 (punkt(FARBE_NEUTRAL), "beide Richtungen gleich"),
                 (punkt(FARBE_SPAET),   "überwiegend zu spät"),
             ]),
-            ("Kreisgröße — Anteil außerhalb", stufen_legende()),
+            ("Kreisgröße — außerhalb des Pünktlichkeitsfensters",
+             stufen_legende()),
         ],
         fuss=_fussnote_fenster(schwelle_frueh_s, schwelle_spaet_s),
     )))
@@ -430,7 +481,8 @@ def lsa_statuskarte(stops, schwelle_frueh_s: int, schwelle_spaet_s: int,
                 (punkt(FARBE_LSA["inaktiv"]),  "Beeinflussung inaktiv"),
                 (punkt(FARBE_LSA["kein_lsa"]), "keine Anlage im Umkreis 150 m"),
             ]),
-            ("Kreisgröße — Anteil außerhalb", stufen_legende()),
+            ("Kreisgröße — außerhalb des Pünktlichkeitsfensters",
+             stufen_legende()),
         ],
         fuss=("Status aus Abgeordnetenhaus Berlin, Drs. 19/19804. Der offene "
               "Datensatz enthält nur Lage und Bezeichnung, keinen ÖPNV-Status. "

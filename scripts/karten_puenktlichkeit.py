@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Schreibt die Zuverlässigkeitskarten als HTML — ohne Notebook-Lauf.
+"""Schreibt die Pünktlichkeitskarten als HTML — ohne Notebook-Lauf.
 
 Ein voller Lauf von `03_lsa_analyse.ipynb` dauert rund zehn Minuten, weil er
 1,2 Mio. Abfahrten für die Segmentanalyse lädt. Die Karten hier brauchen davon
@@ -12,12 +12,12 @@ Sekunden fertig.
 
 Erzeugt in `video/karten/`:
 
-    zuverlaessigkeit_tram_frueh60.html     Farbe = Richtung
-    zuverlaessigkeit_tram_frueh120.html
+    puenktlichkeitsfenster_tram_frueh60.html   Farbe = Richtung
+    puenktlichkeitsfenster_tram_frueh120.html
     lsa_status_tram_frueh60.html           Farbe = ÖPNV-Beeinflussung
     lsa_status_tram_frueh120.html
-    zuverlaessigkeit_ubahn_frueh60.html    zum Vergleich
-    zuverlaessigkeit_ubahn_frueh120.html
+    puenktlichkeitsfenster_ubahn_frueh60.html  zum Vergleich
+    puenktlichkeitsfenster_ubahn_frueh120.html
 
 Für die U-Bahn gibt es bewusst **keine** LSA-Fassung: Eine U-Bahn steht an
 keiner Ampel. Die Karte dient dem Größenvergleich der Kreise, nicht der
@@ -95,8 +95,8 @@ def main() -> int:
 
             karte, _ = zuverlaessigkeitskarte(
                 stops, schwelle_frueh, args.spaet,
-                titel=f"Zuverlässigkeit — {BESCHRIFTUNG[netz]}")
-            pfad = args.ziel / f"zuverlaessigkeit_{netz}_frueh{abs(frueh)}.html"
+                titel=f"Außerhalb des Pünktlichkeitsfensters — {BESCHRIFTUNG[netz]}")
+            pfad = args.ziel / f"puenktlichkeitsfenster_{netz}_frueh{abs(frueh)}.html"
             karte.save(str(pfad))
             print(f"  geschrieben: {pfad.relative_to(WURZEL)}")
 

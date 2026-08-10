@@ -219,11 +219,23 @@ attached to each departure, deduplicated by MD5 of
 entire validity**. A three-week engineering works notice generates hundreds of thousands
 of documents.
 
-Tram: 1,500,492 documents → **1,961 distinguishable incidents**.
-U-Bahn: 765,008 documents → **3,067 incidents**.
+As of 10 Aug 2026 — collection is ongoing, so these grow:
+
+| | documents | distinguishable incidents | ratio |
+|---|---|---|---|
+| Tram | 1,835,330 | **2,123** | 864 : 1 |
+| U-Bahn | 836,096 | **3,449** | 242 : 1 |
 
 Count incidents by deduplicating on (`line_name`, `summary`, `valid_from`). Document
 shares are meaningless as frequency statements.
+
+**This inflation is not duplication.** Both collectors assign a deterministic `_id` —
+departures use `trip_id-stop_id-planned_when`, remarks use an MD5 over
+(`trip_id`, `stop_id`, `remark_code`, `valid_from`) — and write with `op_type: "index"`,
+so a repeated collection round overwrites the same document instead of appending. Because
+Elasticsearch enforces uniqueness on `_id`, duplicates are structurally impossible rather
+than merely unlikely. Verified on the departures index: for sampled trips the ratio of
+documents to distinct stops is exactly 1.00, in May and in August alike.
 
 ### 8. The disruption feed contains BVG test messages
 
@@ -323,44 +335,66 @@ them into one number was the defect.
 
 ---
 
-### 14. The punctuality window used here is tighter than the official one
+### 14. The punctuality window, and how it maps onto the official one
 
-Analyses in this project use the window **]−60 s, +180 s[**. The BVG/Senate figure uses
-**]−90 s, +210 s[**. Because `delay_s` is minute-quantised (characteristic 1), the official
-thresholds behave as −120 s and +240 s — a filter on `≤ −90` and one on `≤ −120` return
-identical counts, verified to the decimal.
+Analyses in this project use **]−120 s, +180 s[** — a departure counts as outside the
+window at `delay_s ≤ −120` or `delay_s ≥ +180`.
 
-| Window | Tram outside | U-Bahn outside |
-|---|---|---|
-| ]−60, +180[ — used here | **29.9 %** | 10.1 % |
-| ]−90, +210[ — official | 16.6 % | 3.2 % |
+Under the BVG transport contract, since **1 January 2025** a trip counts as punctual if it
+departs **between 60 s before and 210 s after** the published time; the early tolerance was
+tightened from 90 s to 60 s on that date, which is why figures from 2025 onward are not
+comparable with older published ones. *Verfrühungsvermeidung* is a second, separate metric:
+departing **more than 60 s early** is to be avoided, because to a passenger arriving on time
+it behaves like a cancellation.
 
-**Our share is roughly double the official one, and none of that difference is a
-difference in operations.** Any figure from this project placed beside a published BVG
-punctuality number without stating the window is a false comparison.
+Because `delay_s` is minute-quantised (characteristic 1), "more than 60 s early" has exactly
+one representation in this data:
 
-The early side is especially sensitive, because the threshold is inclusive and −60 s is the
-single most frequent early value:
+```
+more than 60 s early  →  delay_s < −60  →  delay_s ≤ −120
+```
 
-| Early value | Tram | share of all early tram departures |
+| Side | This project | Contract | Relationship |
+|---|---|---|---|
+| early | `≤ −120` | more than 60 s early | **identical** |
+| late | `≥ +180` | more than 210 s late (grid: `≥ +240`) | **stricter here** |
+
+So only the late side deviates, and it deviates in the conservative direction: three minutes
+instead of three and a half.
+
+**Why not `≤ −60`** (used until 10 Aug 2026): it is *stricter* than the contract — it counts
+the −60 s grid value, which the contract still treats as punctual — and it is
+rounding-sensitive. −60 s is the single most frequent early value:
+
+| Early value | Tram departures | share of all early tram departures |
 |---|---|---|
 | exactly −60 s | 996,782 | **45.8 %** |
 | exactly −120 s | 1,000,921 | 46.0 % |
 | −180 s or earlier | 165,330 | 8.2 % |
 
-For the U-Bahn **83.3 %** of all early departures sit on −60 s exactly. Since a reported
-−60 s is a rounded value, "at least one minute early" in practice means "more than roughly
-half a minute early".
+For the U-Bahn **83.3 %** of early departures sit on −60 s exactly. And the sub-minute truth
+behind that bucket is unrecoverable: across all 13.2 M documents, `when` and `planned_when`
+carry **exactly one distinct seconds value, `0`**, and `delay_s` equals their difference with
+zero deviation in all 11.3 M cases. A recorded −60 s can therefore mean anything from a few
+seconds to nearly two minutes early. `≤ −120` is the smallest threshold at which "more than a
+minute early" holds under any rounding convention.
 
-Raising the early threshold to −120 s halves the tram share (29.9 % → 21.1 %) and *widens*
-the gap between the networks, because the U-Bahn's early share collapses from 6.1 % to
-1.0 % — a factor of 3.1 becomes a factor of 10.4. Whether that concentration on one bucket
-is genuine dispatch behaviour or an artefact of the U-Bahn feed cannot be decided from
-these data.
+Effect of the change:
 
-> The tighter window is a deliberate choice, not an oversight: a whole `Takt` is lost to
-> any early departure regardless of size. Both variants are produced —
-> `scripts/karten_zuverlaessigkeit.py` writes the maps at −60 s and at −120 s.
+| | `≤ −60` | `≤ −120` |
+|---|---|---|
+| Tram early | 19.3 % | 10.4 % |
+| U-Bahn early | 6.1 % | 1.0 % |
+| ratio | 3.1× | **10.2×** |
+| median share outside per stop (tram) | 28.3 % | 19.4 % |
+| stops predominantly early | 334 of 396 | 196 of 396 |
+
+The gap between the networks *widens*. Whether the U-Bahn's concentration on a single bucket
+is genuine dispatch behaviour or an artefact of its feed cannot be decided from these data.
+
+> Both variants are produced — `scripts/karten_zuverlaessigkeit.py` writes the maps at −60 s
+> and at −120 s, for tram and U-Bahn. Labels are written in whole minutes, never seconds: a
+> seconds figure claims a resolution the data does not have.
 
 ---
 
