@@ -110,6 +110,19 @@ VERFRUEHT_SCHWELLE_S = -120
 # Netzfarben wie im ganzen Projekt. Auf Farbfehlsichtigkeit geprueft:
 # Abstand 26 (OKLab x100) unter Protanopie, 36 unter Tritanopie — beides weit
 # ueber der Grenze von 8. Nicht gegen ein Rot/Gruen-Paar tauschen.
+#
+# ── Warum die Tram ROT ist und nicht orange (entschieden am 12.08.2026) ──────
+#
+# Erwogen wurde Dunkelorange, weil die Fahrzeuge selbst dunkelorange lackiert
+# sind. Verworfen: Die BVG verwendet in ihrer eigenen Kommunikation Rot fuer die
+# Strassenbahn, und daran haelt sich dieses Projekt. Die Entscheidung gilt fuer
+# alle Grafiken und auch fuer kuenftige — wer eine neue Grafik baut, nimmt
+# FARBE_NETZ und setzt keine eigene Farbe.
+#
+# Nebenwirkung, die dadurch vermieden bleibt: #E65100 (Dunkelorange) ist im
+# Projekt bereits mit "zu spaet" belegt — im Tagesgang und auf den Karten. Waere
+# die Tram orange geworden, haette dieselbe Farbe in einer Szene "Strassenbahn"
+# und in der naechsten "Verspaetung" bedeutet.
 FARBE_NETZ = {"Tram": "#E53935", "U-Bahn": "#1E88E5"}
 
 # ── TEXTE ────────────────────────────────────────────────────────────────────
@@ -261,6 +274,281 @@ def richtungsvergleich(
         yaxis=dict(title="", categoryorder="array", categoryarray=reihenfolge,
                    range=[-1.35, 2.45], showgrid=False),
         plot_bgcolor="white", height=430,
+    )
+    return fig
+
+
+# ── Validierung: eigene Messung gegen Qualitaetsmonitor ──────────────────────
+#
+# Wozu die Grafik da ist: Sie belegt, dass die eigene Erhebung dasselbe misst wie
+# die Senatsverwaltung.
+#
+# ── Warum Tram gegen U-Bahn und nicht der Abstand ────────────────────────────
+#
+# Die erste Fassung zeigte den ABSTAND zwischen den Netzen als Balken (12,9 pp
+# gegen 11,1 pp). Formal richtig und im Video unbrauchbar: "Abstand in
+# Prozentpunkten" ist eine abgeleitete Groesse, die niemand in der einen Sekunde
+# liest, die ein Videobild hat. Verworfen am 12.08.2026.
+#
+# Diese Fassung zeigt vier Balken je Kennzahl — Tram und U-Bahn, einmal aus der
+# eigenen Erhebung und einmal aus dem Monitor. Die Aussage steht damit in der
+# FORM und nicht in einer Zahl: links und rechts dasselbe Bild. Der Zuschauer
+# muss nichts rechnen.
+#
+# ── Warum die negativ gewendeten Kennzahlen ──────────────────────────────────
+#
+# Gezeigt wird "ausserhalb des Puenktlichkeitsfensters" statt "puenktlich" und
+# "ausgefallen" statt "Zuverlaessigkeit". Zwei Gruende:
+#
+# 1. In der positiven Fassung liegen alle vier Balken zwischen 84 und 99 %. Die
+#    Unterschiede verschwinden optisch, und die einzige Rettung waere eine bei
+#    85 % beginnende Achse. Die ist bei Balken verboten — die Laenge steht dann
+#    fuer nichts mehr.
+# 2. Negativ gewendet sind es Faktoren statt Nachkommastellen: Die Tram liegt
+#    rund sechsmal so oft ausserhalb des Fensters. Dieselbe Zahl, nur sichtbar.
+#
+# ── Die Niveaus stimmen nicht ueberein, und das ist in Ordnung ───────────────
+#
+# Der Monitor zaehlt je FAHRT, diese Erhebung je ABFAHRT AN EINER HALTESTELLE.
+# Die eigene Unpuenktlichkeitsquote liegt deshalb systematisch HOEHER (Mai 2026:
+# 15,6 % gegen 13,1 % bei der Tram). Das Bild behauptet auch nichts anderes: Die
+# Aussage ist "dasselbe Muster", nicht "dieselben Zahlen". Im Sprechtext ist die
+# Zaehleinheit unmittelbar davor erklaert; der Untertitel wiederholt sie.
+#
+# Farben: die Netzfarben des Projekts, weil hier tatsaechlich Tram gegen U-Bahn
+# steht — anders als in der verworfenen Abstandsfassung, die zwei Quellen
+# gegeneinandergestellt hat. Pruefung siehe FARBE_NETZ.
+
+TEXTE_VALIDIERUNG = {
+    "titel": "Vergleich: amtliche vs. selbst erhobene Daten",
+    "untertitel": ("{monat}. Links meine Erhebung aus der öffentlichen "
+                   "Abfahrts-API, rechts der Qualitätsmonitor der "
+                   "Senatsverwaltung.<br>Qualitätsmonitor misst je Fahrt, "
+                   "ich messe je Halt."),
+
+    # ACHTUNG, zwei verschiedene Dinge:
+    #
+    # `quellen` sind die SCHLUESSEL in der Spalte `Quelle` des DataFrames. Sie
+    # sind der Vertrag mit scripts/grafik_validierung.py — wer sie aendert, muss
+    # dort mitaendern, sonst bricht der Zugriff mit einem KeyError ab.
+    #
+    # `beschriftung` ist der Text, der im BILD unter den Balken steht. Hier
+    # gefahrlos aendern; die Zuordnung laeuft ueber den Schluessel links.
+    "quellen": ["meine Messung", "amtlich"],
+    "beschriftung": {
+        "meine Messung": "meine Messung",
+        "amtlich": "amtliche Messung",
+    },
+    "faktor": "Tram {faktor}×",
+}
+
+# Je Kennzahl der Titel der Facette. Die Reihenfolge im DataFrame bestimmt, was
+# links und was rechts steht.
+TITEL_VALIDIERUNG = {
+    "unpünktlich": "Außerhalb des Pünktlichkeitsfensters",
+    "ausgefallen": "Ausgefallene Fahrten",
+}
+
+
+# ── Dieselbe Aussage als Klickanimation ──────────────────────────────────────
+#
+# Fuer den Videoschnitt: Das Bild beginnt weiss und baut sich auf Klick auf. Der
+# Grund ist dramaturgisch — wer vier Balken gleichzeitig sieht, liest sie in
+# beliebiger Reihenfolge; wer sie nacheinander sieht, folgt dem Satz, der gerade
+# gesprochen wird.
+#
+# Die amtlichen Balken sind blass, die eigenen voll gesaettigt. Das ist Absicht:
+# Die eigene Messung ist die Aussage, die amtliche ist die Bestaetigung. Beide
+# behalten aber ihre Netzfarbe — ein grauer Balken wuerde die Zuordnung Tram /
+# U-Bahn zerstoeren, die im ganzen Video an Rot und Blau haengt.
+#
+# Nur die PUENKTLICHKEIT. Die Ausfaelle sind an dieser Stelle der Storyline noch
+# nicht eingefuehrt und wuerden ablenken (Entscheidung vom 12.08.2026). Die
+# Zeichenlogik kann sie — es wird nur eine Kennzahl uebergeben.
+
+TEXTE_ANIMATION = {
+    "titel": "Vergleich: amtliche vs. selbst erhobene Daten",
+    "hinweis": ("Der Qualitätsmonitor misst <b>je Fahrt</b> — "
+                "ich messe <b>je Halt</b>."),
+    "achse_y": "Anteil der Abfahrten außerhalb des Pünktlichkeitsfensters",
+}
+
+# Wie blass die amtlichen Balken werden. 0.30 ist geprueft: deutlich zurueck-
+# tretend, aber die Farbe bleibt als Tram/U-Bahn erkennbar.
+DECKKRAFT_AMTLICH = 0.30
+
+
+def _rgba(hexwert: str, alpha: float) -> str:
+    h = hexwert.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def validierung_animation(werte: pd.DataFrame, kennzahl: str = "unpünktlich"):
+    """Figur und Klickschritte für die Aufbau-Animation.
+
+    Rueckgabe: `(fig, schritte)`. `schritte` ist eine Liste von Dictionaries, die
+    das HTML-Skript nacheinander an `Plotly.update` weiterreicht — Schritt fuer
+    Schritt, jeweils auf Klick. Der Nullzustand ist bereits in `fig` gesetzt:
+    leere Balken, unsichtbare Beschriftungen.
+    """
+    quellen = TEXTE_VALIDIERUNG["quellen"]
+    beschriftet = [TEXTE_VALIDIERUNG["beschriftung"].get(q, q) for q in quellen]
+    tabelle = werte[werte["Kennzahl"] == kennzahl].set_index("Quelle")
+    if not all(q in tabelle.index for q in quellen):
+        raise KeyError(f"Kennzahl {kennzahl!r} hat nicht beide Quellen "
+                       f"{quellen} — vorhanden: {list(tabelle.index)}")
+
+    hoehen = {netz: [tabelle.loc[q, netz] for q in quellen]
+              for netz in ("Tram", "U-Bahn")}
+
+    fig = go.Figure()
+    for netz in ("Tram", "U-Bahn"):
+        fig.add_trace(go.Bar(
+            x=beschriftet, y=[None, None], name=netz, width=0.30,
+            # Erster Eintrag voll, zweiter blass — die Reihenfolge folgt
+            # `quellen`, also eigene Messung zuerst.
+            marker_color=[FARBE_NETZ[netz],
+                          _rgba(FARBE_NETZ[netz], DECKKRAFT_AMTLICH)],
+            text=["", ""], textposition="outside", cliponaxis=False,
+            textfont=dict(size=26, color="#424242"),
+            hovertemplate=f"{netz}, %{{x}}: %{{y:.2f}} %<extra></extra>",
+        ))
+
+    beschriftungen = {netz: [f"{_de(h)} %" for h in hoehen[netz]]
+                      for netz in hoehen}
+    hoechster = max(max(h) for h in hoehen.values())
+
+    fig.update_layout(
+        # Titel und Hinweis sind Annotationen statt layout.title, damit beide
+        # ueber denselben Weg ein- und ausgeblendet werden koennen.
+        annotations=[
+            dict(x=0, y=1.16, xref="paper", yref="paper", xanchor="left",
+                 text=f"<b>{TEXTE_ANIMATION['titel']}</b>", showarrow=False,
+                 font=dict(size=36, color="#1A3A5C"), visible=False),
+            dict(x=0, y=1.05, xref="paper", yref="paper", xanchor="left",
+                 text=TEXTE_ANIMATION["hinweis"], showarrow=False,
+                 font=dict(size=25, color="#616161"), visible=False),
+        ],
+        xaxis=dict(categoryorder="array", categoryarray=beschriftet,
+                   showgrid=False, tickfont=dict(size=30, color="#37474F")),
+        # Feste Achse ab dem ersten Balken — ohne sie springt der Massstab beim
+        # zweiten Klick, und die Balken der eigenen Messung schrumpfen im Bild,
+        # obwohl sich an ihrem Wert nichts geaendert hat.
+        yaxis=dict(title=dict(text=TEXTE_ANIMATION["achse_y"],
+                              font=dict(size=22, color="#616161")),
+                   range=[0, hoechster * 1.22], gridcolor="#ECEFF1",
+                   zeroline=False, ticksuffix=" %",
+                   tickfont=dict(size=24, color="#37474F")),
+        separators=",.",
+        barmode="group", bargroupgap=0.10,
+        legend=dict(font=dict(size=30), x=1.01, xanchor="left",
+                    y=1.0, yanchor="top", bgcolor="rgba(0,0,0,0)"),
+        plot_bgcolor="white", paper_bgcolor="white",
+        margin=dict(t=190, l=130, r=260, b=110),
+    )
+
+    # Ein Schritt = ein Klick. `daten` geht an Plotly.restyle, `layout` an
+    # Plotly.relayout.
+    schritte = [
+        {"layout": {"annotations[0].visible": True}},
+        {"layout": {"annotations[1].visible": True}},
+        {"daten": {"y": [[hoehen["Tram"][0], None],
+                         [hoehen["U-Bahn"][0], None]],
+                   "text": [[beschriftungen["Tram"][0], ""],
+                            [beschriftungen["U-Bahn"][0], ""]]}},
+        {"daten": {"y": [hoehen["Tram"], hoehen["U-Bahn"]],
+                   "text": [beschriftungen["Tram"],
+                            beschriftungen["U-Bahn"]]}},
+    ]
+    return fig, schritte
+
+
+def validierungsvergleich(werte: pd.DataFrame, monat: str = "") -> go.Figure:
+    """Je Kennzahl vier Balken: Tram gegen U-Bahn, eigen gegen amtlich.
+
+    `werte` braucht die Spalten `Kennzahl`, `Quelle`, `Tram` und `U-Bahn`. Die
+    Zahlen sind Prozentanteile, bei denen NIEDRIGER BESSER ist — Anteil
+    ausserhalb des Puenktlichkeitsfensters und Anteil ausgefallener Fahrten.
+    Erwartet werden je Kennzahl zwei Zeilen, eine je Quelle.
+    """
+    from plotly.subplots import make_subplots
+
+    kennzahlen = list(dict.fromkeys(werte["Kennzahl"]))
+    quellen = TEXTE_VALIDIERUNG["quellen"]
+    # Nachschlagen geschieht ueber `quellen`, angezeigt wird `beschriftet`.
+    beschriftet = [TEXTE_VALIDIERUNG["beschriftung"].get(q, q) for q in quellen]
+    tabelle = werte.set_index(["Kennzahl", "Quelle"])
+
+    fehlend = [(k, q) for k in kennzahlen for q in quellen
+               if (k, q) not in tabelle.index]
+    if fehlend:
+        raise KeyError(
+            "Diese Kombinationen fehlen im DataFrame: "
+            + ", ".join(f"{k}/{q}" for k, q in fehlend)
+            + ". TEXTE_VALIDIERUNG['quellen'] muss zu den Werten in der Spalte "
+              "`Quelle` passen — Anzeigetexte gehoeren in ['beschriftung'].")
+
+    fig = make_subplots(
+        rows=1, cols=len(kennzahlen), horizontal_spacing=0.14,
+        subplot_titles=[f"<b>{TITEL_VALIDIERUNG[k]}</b>" for k in kennzahlen])
+
+    for spalte, kennzahl in enumerate(kennzahlen, start=1):
+        for netz in ("Tram", "U-Bahn"):
+            hoehen = [tabelle.loc[(kennzahl, q), netz] for q in quellen]
+            fig.add_trace(go.Bar(
+                x=beschriftet, y=hoehen, name=netz, width=0.32,
+                marker_color=FARBE_NETZ[netz],
+                text=[f"{_de(h, 2 if h < 5 else 1)} %" for h in hoehen],
+                textposition="outside", cliponaxis=False,
+                textfont=dict(size=16, color="#424242"),
+                # Nur die erste Facette speist die Legende, sonst stuende jedes
+                # Netz doppelt darin.
+                showlegend=(spalte == 1), legendgroup=netz,
+                hovertemplate=f"{netz}, %{{x}}: %{{text}}<extra></extra>",
+            ), row=1, col=spalte)
+
+        hoechster = max(tabelle.loc[(kennzahl, q), netz]
+                        for q in quellen for netz in ("Tram", "U-Bahn"))
+        fig.update_yaxes(range=[0, hoechster * 1.30], gridcolor="#ECEFF1",
+                         zeroline=False, ticksuffix=" %",
+                         row=1, col=spalte)
+        fig.update_xaxes(showgrid=False, row=1, col=spalte)
+
+        # Das Verhaeltnis unter jede Quelle. Es ist der eigentliche Beleg: Die
+        # beiden Faktoren stehen nebeneinander und sind fast gleich, waehrend die
+        # Balkenhoehen es nicht sind.
+        for i, q in enumerate(quellen):
+            gross, klein = (tabelle.loc[(kennzahl, q), "Tram"],
+                            tabelle.loc[(kennzahl, q), "U-Bahn"])
+            if klein > gross:
+                gross, klein = klein, gross
+                wer = "U-Bahn"
+            else:
+                wer = "Tram"
+            fig.add_annotation(
+                x=i, y=0, yshift=-46, xref=f"x{spalte if spalte > 1 else ''}",
+                yref=f"y{spalte if spalte > 1 else ''}",
+                text=f"{wer} <b>{_de(gross / klein)}×</b>", showarrow=False,
+                font=dict(size=15, color="#616161"))
+
+    for ann in fig.layout.annotations[:len(kennzahlen)]:   # die Facettentitel
+        ann.update(font=dict(size=18, color="#37474F"))
+
+    fig.update_layout(
+        title=dict(text=(f"<b>{TEXTE_VALIDIERUNG['titel']}</b><br>"
+                         f"<span style='font-size:14px;color:#616161'>"
+                         f"{TEXTE_VALIDIERUNG['untertitel'].format(monat=monat)}"
+                         f"</span>"),
+                   x=0.01, xanchor="left", y=0.96, yanchor="top"),
+        # separators setzt das Dezimalkomma auch auf den Achsenteilstrichen —
+        # ohne das steht dort "0.5" statt "0,5".
+        separators=",.",
+        barmode="group", bargroupgap=0.10,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                    xanchor="right", x=1.0),
+        plot_bgcolor="white", height=470,
+        margin=dict(t=185, l=90, r=60, b=110),
     )
     return fig
 
