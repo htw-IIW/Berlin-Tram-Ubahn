@@ -9,5 +9,5 @@ plotly==5.22.0
 folium==0.16.0
 jupyter==1.0.0
 ipykernel==6.29.4
-python-dotenv==1.0.1pyproj
+python-dotenv==1.0.1
 pyproj

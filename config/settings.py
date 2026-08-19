@@ -2,7 +2,14 @@
 # Central configuration. Adding a new transit network = add a TransitConfig entry
 # in CONFIGS. No other file needs to change.
 
+import os
 from dataclasses import dataclass
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Zugangsdaten kommen aus .env im Repo-Root (nicht in Git, siehe .env.example).
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # All product keys recognised by the BVG REST API
 _BVG_PRODUCTS = ("tram", "bus", "subway", "suburban", "regional", "ferry", "express")
@@ -38,9 +45,17 @@ COLLECT_INTERVAL_SEC    = 60   # seconds between collection rounds
 DEPARTURE_WINDOW_MIN    = 20   # look-ahead per stop (minutes)
 MAX_DEPARTURES_PER_STOP = 10   # cap per API call
 
-ES_HOST     = "http://tram-pi:9200"
-ES_USER     = "elastic"
-ES_PASSWORD = "changeme"
+ES_HOST     = os.getenv("ES_HOST", "http://tram-pi:9200")
+ES_USER     = os.getenv("ES_USER", "elastic")
+ES_PASSWORD = os.getenv("ES_PASSWORD", "")
+
+if not ES_PASSWORD:
+    raise RuntimeError(
+        "ES_PASSWORD ist nicht gesetzt.\n"
+        "Zugangsdaten stehen bewusst nicht mehr im Repository.\n"
+        "Abhilfe: .env.example nach .env kopieren und das Passwort eintragen,\n"
+        "oder ES_PASSWORD als Umgebungsvariable setzen."
+    )
 
 
 # ── Transit network configs ───────────────────────────────────────────────────
