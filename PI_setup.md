@@ -130,8 +130,10 @@ curl -s -u "elastic:$OLD" -X POST localhost:9200/_security/user/elastic/_passwor
 curl -s -u "elastic:$NEW_ES" -X POST localhost:9200/_security/user/kibana_system/_password \
   -H 'Content-Type: application/json' -d "{\"password\":\"$NEW_KB\"}"
 
-# 3. Restart everything that authenticates
-docker restart tram-kibana
+# 3. Restart everything that authenticates.
+#    Kibana must be RECREATED, not restarted: `docker restart` reuses the
+#    container's original environment and would keep the old password.
+docker compose up -d kibana
 sudo systemctl restart transit-collector@tram transit-collector@ubahn
 
 # 4. Verify: collectors running, document count rising
