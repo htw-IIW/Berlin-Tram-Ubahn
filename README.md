@@ -174,7 +174,22 @@ pip install -r requirements.txt
 
 > Each new terminal session: `conda activate tram-analysis`
 
-### 2. Start Elasticsearch & Kibana
+### 2. Credentials
+
+Credentials are **not** stored in the repository. Copy the template and fill it in:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+# → set ES_PASSWORD and KIBANA_SYSTEM_PASSWORD
+```
+
+`.env` is git-ignored. Both `docker-compose.yml` and `config/settings.py` read from it,
+so this is the single place where the password lives. Every script and notebook imports
+`ES_USER` / `ES_PASSWORD` from `config.settings` and fails with a clear message if the
+file is missing.
+
+### 3. Start Elasticsearch & Kibana
 
 ```bash
 docker-compose up -d
@@ -182,21 +197,21 @@ docker-compose up -d
 
 First run downloads images (~1 GB, one-time). After that:
 - **Elasticsearch:** http://localhost:9200
-- **Kibana:** http://localhost:5601 — login: `elastic` / `changeme`
+- **Kibana:** http://localhost:5601 — login: `elastic`, password from `.env`
 
 ```bash
 # Verify connection
-curl -u elastic:changeme http://localhost:9200
+source .env && curl -u "$ES_USER:$ES_PASSWORD" http://localhost:9200
 ```
 
-### 3. Create indices
+### 4. Create indices
 
 ```bash
 python -m src.elasticsearch.indices --mode tram
 python -m src.elasticsearch.indices --mode ubahn
 ```
 
-### 4. Configure Kibana
+### 5. Configure Kibana
 
 ```bash
 python -m src.elasticsearch.kibana_setup
@@ -204,7 +219,7 @@ python -m src.elasticsearch.kibana_setup
 
 Creates data views for all indices and a base dashboard at http://localhost:5601.
 
-### 5. Seed static data (run once)
+### 6. Seed static data (run once)
 
 ```bash
 python -m src.collector.seed_stops --mode tram
@@ -215,7 +230,7 @@ python -m src.collector.seed_routes --mode ubahn
 
 Loads ~200 tram stops, ~170 U-Bahn stops, and their line routes into Elasticsearch.
 
-### 6. Seed LSA data (run once)
+### 7. Seed LSA data (run once)
 
 ```bash
 python -m src.collector.seed_lsa
@@ -223,7 +238,7 @@ python -m src.collector.seed_lsa
 
 Fetches all 2,305 traffic signal locations from the Berlin WFS service and enriches them with tram line proximity and ÖPNV priority status.
 
-### 7. Start collecting
+### 8. Start collecting
 
 ```bash
 bash scripts/collector_start.sh --mode tram
@@ -244,7 +259,7 @@ bash scripts/collector_stop.sh --mode tram
 bash scripts/collector_stop.sh --mode ubahn
 ```
 
-### 8. Run notebooks
+### 9. Run notebooks
 
 ```bash
 jupyter notebook notebooks/

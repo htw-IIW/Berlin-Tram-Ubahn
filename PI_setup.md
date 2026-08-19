@@ -79,8 +79,48 @@ sudo systemctl restart transit-collector@ubahn
 docker-compose -f berlin-tram-analysis/docker-compose.yml ps
 
 # Query Elasticsearch directly
-curl -u elastic:changeme http://localhost:9200/tram-departures-v2/_count
+source ~/berlin-tram-analysis/.env
+curl -u "$ES_USER:$ES_PASSWORD" http://localhost:9200/tram-departures-v2/_count
 ```
+
+## Credentials
+
+Passwords live in `.env` in the repo root on the Pi and are **not** in git. `git pull`
+does not create or overwrite this file — after a fresh clone it has to be created once:
+
+```bash
+cd ~/berlin-tram-analysis
+cp .env.example .env && chmod 600 .env
+nano .env          # → ES_PASSWORD, KIBANA_SYSTEM_PASSWORD
+```
+
+`config/settings.py` reads it via an absolute path derived from the repo root, so the
+systemd collectors pick it up without any extra unit configuration. **If `.env` is
+missing, the collectors fail on the next restart** with an explicit error.
+
+### Rotating the password
+
+`ELASTIC_PASSWORD` in `docker-compose.yml` only takes effect when initialising an empty
+data volume. On a running cluster the password must be reset through Elasticsearch
+itself:
+
+```bash
+# 1. New password for the superuser (prints the generated value)
+docker exec -it tram-es bin/elasticsearch-reset-password -u elastic -a
+
+# 2. Same for Kibana's internal service account
+docker exec -it tram-es bin/elasticsearch-reset-password -u kibana_system -a
+
+# 3. Write both into .env, then restart everything that authenticates
+nano ~/berlin-tram-analysis/.env
+docker restart tram-kibana
+sudo systemctl restart transit-collector@tram transit-collector@ubahn
+
+# 4. Verify: collectors running, document count rising
+bash ~/berlin-tram-analysis/scripts/collector_status.sh
+```
+
+Do not forget the `.env` on the Mac — notebooks and scripts use the same credentials.
 
 ## Remote access via Tailscale
 

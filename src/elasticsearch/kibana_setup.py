@@ -109,7 +109,7 @@ def main() -> None:
             description=f"Verspätungen, Ausfälle und Störungen der Berliner {config.display_name}",
         )
 
-    print(f"\n✅  Kibana-Setup abgeschlossen. Öffnen: {KIBANA_URL}  (Login: {ES_USER} / {ES_PASSWORD})")
+    print(f"\n✅  Kibana-Setup abgeschlossen. Öffnen: {KIBANA_URL}  (Login: {ES_USER}, Passwort aus .env)")
     print("\n   Empfohlene nächste Schritte:")
     print("   1. Discover → Data Views prüfen")
     print("   2. Dashboards → Panels mit Lens hinzufügen")

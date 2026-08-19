@@ -5,7 +5,11 @@ services:
     container_name: tram-es
     environment:
       - discovery.type=single-node
-      - ELASTIC_PASSWORD=changeme
+      # Aus .env im selben Verzeichnis (Vorlage: .env.example).
+      # Achtung: greift nur beim allerersten Start eines leeren Volumes.
+      # Bei bestehendem esdata-Volume ändert sich das Passwort dadurch NICHT —
+      # dafür `elasticsearch-reset-password` benutzen, siehe PI_setup.md.
+      - ELASTIC_PASSWORD=${ES_PASSWORD:?ES_PASSWORD fehlt - .env anlegen}
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=false   # HTTP statt HTTPS lokal
       - ES_JAVA_OPTS=-Xms512m -Xmx512m           # RAM begrenzen (Laptop)
@@ -15,7 +19,7 @@ services:
       - esdata:/usr/share/elasticsearch/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -u elastic:changeme http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\\|yellow\"'"]
+      test: ["CMD-SHELL", "curl -s -u \"elastic:$${ELASTIC_PASSWORD}\" http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\\|yellow\"'"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -26,7 +30,7 @@ services:
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=changeme
+      - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD:?KIBANA_SYSTEM_PASSWORD fehlt - .env anlegen}
     ports:
       - "5601:5601"
     restart: unless-stopped

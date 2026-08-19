@@ -4,8 +4,18 @@
 # for all transit network collectors.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ES_URL="http://localhost:9200"
-ES_AUTH="elastic:changeme"
+
+# Zugangsdaten aus .env im Repo-Root (Vorlage: .env.example), nicht im Code.
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -a; . "$SCRIPT_DIR/.env"; set +a
+fi
+
+ES_URL="${ES_HOST:-http://localhost:9200}"
+if [ -z "${ES_PASSWORD:-}" ]; then
+    echo "❌ ES_PASSWORD ist nicht gesetzt — .env.example nach .env kopieren." >&2
+    exit 1
+fi
+ES_AUTH="${ES_USER:-elastic}:${ES_PASSWORD}"
 
 echo "══════════════════════════════════════════════"
 echo " Collector Status"
