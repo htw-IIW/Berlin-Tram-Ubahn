@@ -104,21 +104,45 @@ missing, the collectors fail on the next restart** with an explicit error.
 data volume. On a running cluster the password must be reset through Elasticsearch
 itself:
 
+Two accounts are affected: `elastic` (the superuser, used by collectors, notebooks and
+the Kibana browser login) and `kibana_system` (Kibana's internal service account, used
+only by `docker-compose.yml`). Write the new values into `.env` **first**, then set them
+on the cluster — that way nothing has to be copied by hand:
+
 ```bash
-# 1. New password for the superuser (prints the generated value)
-docker exec -it tram-es bin/elasticsearch-reset-password -u elastic -a
+cd ~/berlin-tram-analysis
+OLD=changeme                                    # currently valid password
+NEW_ES=$(openssl rand -base64 24 | tr -d '/+=')
+NEW_KB=$(openssl rand -base64 24 | tr -d '/+=')
 
-# 2. Same for Kibana's internal service account
-docker exec -it tram-es bin/elasticsearch-reset-password -u kibana_system -a
+# 1. .env with the new values
+cat > .env <<EOF
+ES_HOST=http://localhost:9200
+ES_USER=elastic
+ES_PASSWORD=$NEW_ES
+KIBANA_SYSTEM_PASSWORD=$NEW_KB
+EOF
+chmod 600 .env
 
-# 3. Write both into .env, then restart everything that authenticates
-nano ~/berlin-tram-analysis/.env
+# 2. Apply them to the cluster
+curl -s -u "elastic:$OLD" -X POST localhost:9200/_security/user/elastic/_password \
+  -H 'Content-Type: application/json' -d "{\"password\":\"$NEW_ES\"}"
+curl -s -u "elastic:$NEW_ES" -X POST localhost:9200/_security/user/kibana_system/_password \
+  -H 'Content-Type: application/json' -d "{\"password\":\"$NEW_KB\"}"
+
+# 3. Restart everything that authenticates
 docker restart tram-kibana
 sudo systemctl restart transit-collector@tram transit-collector@ubahn
 
 # 4. Verify: collectors running, document count rising
-bash ~/berlin-tram-analysis/scripts/collector_status.sh
+bash scripts/collector_status.sh
 ```
+
+`elasticsearch-reset-password -u elastic -a` inside the container does the same thing but
+generates the value itself, which then has to be transcribed into `.env` by hand.
+
+Afterwards put the same `ES_PASSWORD` into the `.env` on the Mac — notebooks and scripts
+use the same account.
 
 Do not forget the `.env` on the Mac — notebooks and scripts use the same credentials.
 
