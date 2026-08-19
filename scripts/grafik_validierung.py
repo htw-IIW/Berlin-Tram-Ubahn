@@ -12,11 +12,11 @@ die Pünktlichkeit und für die Zuverlässigkeit.
 
 ── Warum keine absoluten Quoten ─────────────────────────────────────────────
 
-Der Monitor zählt je Fahrt, diese Erhebung je Abfahrt an einer Haltestelle. Die
-Niveaus liegen deshalb systematisch auseinander (Mai 2026: eigen 84,4 % gegen
-amtlich 86,9 % bei der Tram) und dürfen nicht nebeneinandergestellt werden — das
-sähe wie eine gescheiterte Replikation aus, obwohl der Unterschied erklärbar und
-stabil ist. Übereinstimmen tun die Abstände, und nur die stehen im Bild.
+Der Monitor weist Fahrten aus, diese Erhebung Abfahrten je Haltestelle. Die
+Niveaus liegen auseinander (Mai 2026: eigen 84,4 % gegen amtlich 86,9 % bei der
+Tram). **Woran das liegt, ist offen** — die Zähleinheit allein erklärt es nicht,
+siehe die Rechnung im Kopf von scripts/validierung_bvg.py. Deshalb stehen im Bild
+die Abstände zwischen den Netzen und nicht die absoluten Quoten.
 
 Die Zahlen stammen aus derselben Rechnung wie `scripts/validierung_bvg.py` —
 dieses Skript importiert sie von dort, damit Konsolenausgabe und Grafik nicht

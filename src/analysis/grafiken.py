@@ -278,6 +278,159 @@ def richtungsvergleich(
     return fig
 
 
+# ── Dieselbe Grafik, in der Mitte aufgeteilt ─────────────────────────────────
+#
+# richtungsvergleich() zeigt beide Richtungen gleichzeitig. Fuer den Film wird
+# sie an der Nulllinie zerlegt: In Szene 5 laeuft nur die Verspaetungsseite, die
+# Verfruehungsseite kommt erst in Szene 8. Der Zuschauer sieht die zweite Haelfte
+# also, nachdem er die erste fuer das ganze Bild gehalten hat.
+#
+# ── Der Massstab ist die ganze Grafik ────────────────────────────────────────
+#
+# Beide Haelften MUESSEN dieselbe x-Achse tragen. Rechnet man den Achsenrand je
+# Bild neu, wird der laengste Balken jedes Mal gleich lang — 6,2 % in Szene 5
+# saehen aus wie 10,5 % in Szene 8, und die Pointe waere zerstoert, bevor sie
+# ausgesprochen ist. Deshalb nimmt `grenze` beide Richtungen entgegen; wer nur
+# eine Haelfte zeichnet, muss den Wert von aussen setzen.
+# scripts/grafik_richtung_halb.py tut genau das und schreibt darum beide Bilder
+# in einem Lauf — getrennt aufgerufen koennten sie auseinanderlaufen.
+#
+# ── Warum die Verfruehungsseite nach links zeigt ─────────────────────────────
+#
+# Sie behaelt die Richtung, die sie in der vollen Grafik hat: zu frueh nach
+# links, zu spaet nach rechts, wie auf einem Zeitstrahl. Damit lassen sich die
+# beiden Bilder im Schnitt auch nebeneinanderlegen und ergeben wieder das Ganze.
+# Bei der linken Haelfte wandert die Netzbeschriftung auf die rechte Seite, weil
+# die Balken dort an der Nulllinie beginnen.
+
+# Ohne Titel und ohne Untertitel — der Titel wird im Schnitt gesetzt. Das Bild
+# traegt nur noch die Kopfzeile, die Netznamen, die Werte und die Achse.
+TEXTE_HALB = {
+    "spaet": {"kopf": "zu spät  {dauer}  ▶"},
+    "frueh": {"kopf": "◀  zu früh  {dauer}"},
+    "achse_x": "Anteil der Abfahrten (%)",
+}
+
+# ── Warum im Bild andere Minuten stehen als im Filter ────────────────────────
+#
+# Gefiltert wird auf delay_s <= -120 und delay_s >= 240. Waeren diese Zahlen die
+# Beschriftung, stuende im Bild "mindestens 2 Minuten" und "mindestens 4
+# Minuten" — und der Sprechtext sagt im selben Moment "hoechstens dreieinhalb
+# Minuten zu spaet" (Szene 2) und "mehr als eine Minute vor der Fahrplanzeit"
+# (Szene 8). Zwei verschiedene Zahlen fuer dieselbe Sache, eine gesprochen und
+# eine im Bild: Der Zuschauer haelt eine davon fuer falsch.
+#
+# Richtig ist beides. Der Vertrag zieht die Grenze bei 60 s zu frueh und 210 s zu
+# spaet; delay_s ist minutenquantisiert (DATASET.md Nr. 1), der naechste
+# moegliche Wert jenseits der Grenze ist deshalb -120 bzw. 240. Herleitung im
+# Kopf von VERFRUEHT_SCHWELLE_S.
+#
+# Im Bild steht die VERTRAGSREGEL, weil sie das ist, was gesprochen wird. Fuer
+# andere Schwellen als die beiden vertraglichen gibt es keine solche Regel — dann
+# faellt die Beschriftung auf den gefilterten Wert zurueck.
+VERTRAGSTEXT = {240: "mehr als 3½ Minuten", -120: "mehr als 1 Minute"}
+
+
+def _fenstertext(schwelle_s: int) -> str:
+    return VERTRAGSTEXT.get(schwelle_s, f"mindestens {_dauer(schwelle_s)}")
+
+
+def richtungsvergleich_halb(
+    anteile: pd.DataFrame,
+    richtung: str = "spaet",
+    schwelle_s: int | None = None,
+    grenze: float | None = None,
+) -> go.Figure:
+    """Eine Haelfte von `richtungsvergleich` — nur zu spaet oder nur zu frueh.
+
+    `richtung` ist "spaet" oder "frueh". `grenze` ist der Achsenrand in Prozent;
+    ohne Angabe wird er aus BEIDEN Richtungen berechnet, damit die zwei Bilder
+    auch bei getrenntem Aufruf denselben Massstab tragen.
+    """
+    if richtung not in ("spaet", "frueh"):
+        raise ValueError(f"richtung ist 'spaet' oder 'frueh', nicht {richtung!r}")
+
+    spalte = "zu spät (%)" if richtung == "spaet" else "zu früh (%)"
+    vorzeichen = +1 if richtung == "spaet" else -1
+    if schwelle_s is None:
+        schwelle_s = (VERSPAETET_SCHWELLE_S if richtung == "spaet"
+                      else VERFRUEHT_SCHWELLE_S)
+
+    reihenfolge = ["U-Bahn", "Tram"]          # Tram oben, wie in der vollen Grafik
+    werte = anteile.set_index("Netz").loc[reihenfolge]
+    farben = [FARBE_NETZ[netz] for netz in reihenfolge]
+
+    if grenze is None:
+        grenze = achsenrand(anteile)
+    schritt = 2 if grenze <= 14 else 5
+    ticks = [vorzeichen * t for t in range(0, int(grenze) + 1, schritt)]
+
+    # Begruendung siehe richtungsvergleich(): schmale Balken fassen ihre
+    # Beschriftung nicht, die Zahl muss dann nach aussen. Die Schrift ist hier
+    # groesser als in der vollen Grafik — es sind nur zwei Balken statt vier,
+    # und das Bild laeuft im Video als Vollformat.
+    MINDESTBREITE = 0.12
+    innen = [v / grenze >= MINDESTBREITE for v in werte[spalte]]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=reihenfolge, x=vorzeichen * werte[spalte], orientation="h",
+        width=0.46, marker_color=farben, showlegend=False,
+        text=[f"<b>{_de(v)} %</b>" for v in werte[spalte]],
+        textposition=["inside" if i else "outside" for i in innen],
+        insidetextanchor="middle",
+        textfont=dict(size=26,
+                      color=["white" if i else "#424242" for i in innen]),
+        cliponaxis=False,
+        hovertemplate="%{y}: %{text}<extra></extra>",
+    ))
+    fig.add_vline(x=0, line_width=1, line_color="#9e9e9e")
+
+    # Die Kopfzeile sitzt an der Nulllinie und laeuft in die Richtung, in die
+    # auch die Balken wachsen. In der Bildmitte (wie in der vollen Grafik) haette
+    # sie hier ueber leerer Flaeche gestanden, weil die zweite Haelfte fehlt.
+    fig.add_annotation(
+        x=0, y=1.58, showarrow=False, xshift=vorzeichen * 8,
+        xanchor="left" if vorzeichen > 0 else "right",
+        text="<b>"
+             + TEXTE_HALB[richtung]["kopf"].format(dauer=_fenstertext(schwelle_s))
+             + "</b>",
+        font=dict(size=16, color="#424242"))
+
+    achse = [0, grenze] if vorzeichen > 0 else [-grenze, 0]
+    fig.update_layout(
+        title=None,
+        xaxis=dict(title=TEXTE_HALB["achse_x"], range=achse,
+                   tickvals=ticks, ticktext=[str(abs(t)) for t in ticks],
+                   zeroline=False, gridcolor="#eeeeee"),
+        # Bei der linken Haelfte steht die Nulllinie rechts — die Netznamen
+        # gehoeren dorthin, wo die Balken anfangen.
+        #
+        # Die y-Grenzen sind knapper als in der vollen Grafik: Dort steht unter
+        # jeder Seite noch eine Faktorzeile, hier traegt der Titel den Faktor.
+        # Mit dem alten Bereich haetten zwei Balken 1080 Pixel Hoehe gefuellt und
+        # ringsum nur Weiss gestanden.
+        yaxis=dict(title="", categoryorder="array", categoryarray=reihenfolge,
+                   range=[-0.62, 1.88], showgrid=False,
+                   side="left" if vorzeichen > 0 else "right"),
+        plot_bgcolor="white", height=430,
+    )
+    return fig
+
+
+def achsenrand(anteile: pd.DataFrame, raster: int = 2) -> float:
+    """Gemeinsamer Achsenrand fuer beide Haelften, in Prozent.
+
+    `raster` ist die Schrittweite, auf die aufgerundet wird. Die volle Grafik
+    rundet auf 5 — bei 10,45 % als groesstem Wert kommt dabei 15 heraus, und der
+    laengste Balken fuellt nur zwei Drittel der Achse. In der halben Grafik faellt
+    das staerker auf, weil die Gegenseite fehlt; mit `raster=2` wird daraus 12.
+    Der Massstab bleibt fuer beide Haelften derselbe, nur enger gefasst.
+    """
+    groesster = max(anteile["zu früh (%)"].max(), anteile["zu spät (%)"].max())
+    return max(float(raster), math.ceil(groesster * 1.06 / raster) * raster)
+
+
 # ── Validierung: eigene Messung gegen Qualitaetsmonitor ──────────────────────
 #
 # Wozu die Grafik da ist: Sie belegt, dass die eigene Erhebung dasselbe misst wie
@@ -321,10 +474,11 @@ def richtungsvergleich(
 
 TEXTE_VALIDIERUNG = {
     "titel": "Vergleich: amtliche vs. selbst erhobene Daten",
-    "untertitel": ("{monat}. Links meine Erhebung aus der öffentlichen "
-                   "Abfahrts-API, rechts der Qualitätsmonitor der "
-                   "Senatsverwaltung.<br>Qualitätsmonitor misst je Fahrt, "
-                   "ich messe je Halt."),
+    # Kein Satz mehr zur Zaehleinheit. Er behauptete eine Erklaerung fuer den
+    # Niveauunterschied, die sich am 17.08.2026 nicht halten liess.
+    "untertitel": ("{monat}. Links der Qualitätsmonitor der Senatsverwaltung, "
+                   "rechts meine Erhebung aus der öffentlichen "
+                   "Abfahrts-API."),
 
     # ACHTUNG, zwei verschiedene Dinge:
     #
@@ -334,7 +488,11 @@ TEXTE_VALIDIERUNG = {
     #
     # `beschriftung` ist der Text, der im BILD unter den Balken steht. Hier
     # gefahrlos aendern; die Zuordnung laeuft ueber den Schluessel links.
-    "quellen": ["meine Messung", "amtlich"],
+    "quellen": ["amtlich", "meine Messung"],
+    # Welche Quelle hervorgehoben wird — voll gesaettigt statt blass. Haengt
+    # am NAMEN und nicht an der Position, sonst kippt die Hervorhebung mit,
+    # sobald jemand die Reihenfolge in `quellen` aendert.
+    "hervorgehoben": "meine Messung",
     "beschriftung": {
         "meine Messung": "meine Messung",
         "amtlich": "amtliche Messung",
@@ -348,6 +506,74 @@ TITEL_VALIDIERUNG = {
     "unpünktlich": "Außerhalb des Pünktlichkeitsfensters",
     "ausgefallen": "Ausgefallene Fahrten",
 }
+
+
+# ── Zwei grosse Zahlen: der Mittelwert je Netz ───────────────────────────────
+#
+# Fuer Szene 4. Ein Diagramm waere hier falsch: Es gibt nur zwei Werte, und die
+# Aussage ist, dass sie NAH BEIEINANDER liegen. Zwei Balken zu diesen Zahlen
+# haetten eine sichtbare Laengendifferenz und wuerden genau das Gegenteil
+# behaupten. Grosse Zahlen sind die richtige Form — im Video ausserdem die
+# einzige, die auf einem Beamer aus der letzten Reihe lesbar ist.
+#
+# Warum nicht die Kibana-Kacheln: Die koennen es auch, aber nur als ZWEI Panels.
+# Sobald eine Lens-Metric einen Breakdown bekommt, teilen sich alle Kacheln
+# dieselbe statische Farbe — Rot und Blau nebeneinander ist dort nicht
+# einstellbar. Diese Fassung ist eine Datei und trifft die Netzfarben exakt.
+
+TEXTE_KACHELN = {
+    "titel": "Im Mittel trennen beide Netze zehn Sekunden",
+    "untertitel": ("Mittlere Abweichung von der Fahrplanzeit je Abfahrt, "
+                   "{zeitraum}. Positiv heißt zu spät."),
+    "fussnote": "Der Mittelwert allein trägt diesen Vergleich nicht.",
+}
+
+
+def kennzahl_kacheln(werte: dict, zeitraum: str = "",
+                     einheit: str = " s") -> go.Figure:
+    """Je Netz eine grosse Zahl nebeneinander.
+
+    `werte` ist ein Dictionary `{"Tram": 33.0, "U-Bahn": 22.5}`. Gerundet wird
+    auf ganze Einheiten — die Nachkommastelle traegt im Video nichts und die
+    Erhebung laeuft ohnehin weiter.
+    """
+    netze = list(werte)
+    fig = go.Figure()
+
+    # Kein Achsensystem, keine Balken — nur Text auf leerer Flaeche. Die
+    # Positionen sind Papierkoordinaten, damit sie nicht von Daten abhaengen.
+    # xanchor ausdruecklich auf "center". Ohne das setzt plotly den Anker je
+    # nach Position automatisch, und die Beschriftung stand nicht mittig unter
+    # ihrer Zahl — bei 150 px Schrift faellt das sofort auf.
+    for nr, netz in enumerate(netze):
+        mitte = (nr + 0.5) / len(netze)
+        fig.add_annotation(
+            x=mitte, y=0.66, xref="paper", yref="paper", showarrow=False,
+            xanchor="center", yanchor="middle",
+            text=f"<b>{round(werte[netz]):.0f}{einheit}</b>",
+            font=dict(size=140, color=FARBE_NETZ[netz]))
+        fig.add_annotation(
+            x=mitte, y=0.34, xref="paper", yref="paper", showarrow=False,
+            xanchor="center", yanchor="middle",
+            text=netz, font=dict(size=44, color="#37474F"))
+
+    fig.add_annotation(
+        x=0.5, y=0.05, xref="paper", yref="paper", showarrow=False,
+        xanchor="center", yanchor="middle",
+        text=TEXTE_KACHELN["fussnote"],
+        font=dict(size=26, color="#90A4AE"))
+
+    fig.update_layout(
+        title=dict(text=(f"<b>{TEXTE_KACHELN['titel']}</b><br>"
+                         f"<span style='font-size:22px;color:#616161'>"
+                         f"{TEXTE_KACHELN['untertitel'].format(zeitraum=zeitraum)}"
+                         f"</span>"),
+                   x=0.5, xanchor="center", y=0.95, yanchor="top"),
+        xaxis=dict(visible=False), yaxis=dict(visible=False),
+        plot_bgcolor="white", paper_bgcolor="white",
+        margin=dict(t=190, l=60, r=60, b=60), height=470,
+    )
+    return fig
 
 
 # ── Dieselbe Aussage als Klickanimation ──────────────────────────────────────
@@ -368,10 +594,18 @@ TITEL_VALIDIERUNG = {
 
 TEXTE_ANIMATION = {
     "titel": "Vergleich: amtliche vs. selbst erhobene Daten",
-    "hinweis": ("Der Qualitätsmonitor misst <b>je Fahrt</b> — "
-                "ich messe <b>je Halt</b>."),
+    # Nennt die beiden QUELLEN, nicht die Zaehleinheit — der Vergleich ist
+    # "direkt von der BVG" gegen "oeffentliche API", und mehr ist belegbar.
+    "hinweis": ("Der Qualitätsmonitor bekommt die Daten <b>direkt von der BVG</b> — ich messe über die <b>öffentliche Abfahrts-API</b>."),
     "achse_y": "Anteil der Abfahrten außerhalb des Pünktlichkeitsfensters",
+    "achse_y_spaet": "Anteil der Abfahrten mehr als 3½ Minuten zu spät",
+    "differenz": "Differenz:",
 }
+
+# Die Raender der Zeichenflaeche in Pixeln. Sie stehen hier und nicht nur im
+# Layout, weil scripts/animation_validierung.py dieselben Werte fuer das CSS der
+# Differenzzeile braucht — nur so steht jede Zahl mittig unter ihrer Gruppe.
+RAND_LINKS, RAND_RECHTS, RAND_UNTEN = 130, 260, 200
 
 # Wie blass die amtlichen Balken werden. 0.30 ist geprueft: deutlich zurueck-
 # tretend, aber die Farbe bleibt als Tram/U-Bahn erkennbar.
@@ -408,8 +642,10 @@ def validierung_animation(werte: pd.DataFrame, kennzahl: str = "unpünktlich"):
             x=beschriftet, y=[None, None], name=netz, width=0.30,
             # Erster Eintrag voll, zweiter blass — die Reihenfolge folgt
             # `quellen`, also eigene Messung zuerst.
-            marker_color=[FARBE_NETZ[netz],
-                          _rgba(FARBE_NETZ[netz], DECKKRAFT_AMTLICH)],
+            marker_color=[
+                FARBE_NETZ[netz] if q == TEXTE_VALIDIERUNG["hervorgehoben"]
+                else _rgba(FARBE_NETZ[netz], DECKKRAFT_AMTLICH)
+                for q in quellen],
             text=["", ""], textposition="outside", cliponaxis=False,
             textfont=dict(size=26, color="#424242"),
             hovertemplate=f"{netz}, %{{x}}: %{{y:.2f}} %<extra></extra>",
@@ -422,6 +658,14 @@ def validierung_animation(werte: pd.DataFrame, kennzahl: str = "unpünktlich"):
     fig.update_layout(
         # Titel und Hinweis sind Annotationen statt layout.title, damit beide
         # ueber denselben Weg ein- und ausgeblendet werden koennen.
+        # Reihenfolge ist verbindlich — das HTML-Skript spricht die Annotationen
+        # ueber ihren Index an: 0 Titel, 1 Hinweis. Mehr sind es nicht.
+        #
+        # Die Differenzen stehen bewusst NICHT hier. Als Annotation unterhalb der
+        # Achse sind sie mit den Achsenbeschriftungen kollidiert, sobald plotly
+        # die Kategorien schraeg stellt — im Video sah es aus wie ein Textfehler.
+        # Sie liegen jetzt als eigenes HTML-Element unter der Grafik, siehe
+        # scripts/animation_validierung.py.
         annotations=[
             dict(x=0, y=1.16, xref="paper", yref="paper", xanchor="left",
                  text=f"<b>{TEXTE_ANIMATION['titel']}</b>", showarrow=False,
@@ -430,8 +674,12 @@ def validierung_animation(werte: pd.DataFrame, kennzahl: str = "unpünktlich"):
                  text=TEXTE_ANIMATION["hinweis"], showarrow=False,
                  font=dict(size=25, color="#616161"), visible=False),
         ],
+        # tickangle ausdruecklich auf 0: Sonst dreht plotly die Kategorien in
+        # schmalen Fenstern auf 45 Grad, und die Ausrichtung der Differenzzeile
+        # darunter stimmt nicht mehr.
         xaxis=dict(categoryorder="array", categoryarray=beschriftet,
-                   showgrid=False, tickfont=dict(size=30, color="#37474F")),
+                   showgrid=False, tickangle=0,
+                   tickfont=dict(size=30, color="#37474F")),
         # Feste Achse ab dem ersten Balken — ohne sie springt der Massstab beim
         # zweiten Klick, und die Balken der eigenen Messung schrumpfen im Bild,
         # obwohl sich an ihrem Wert nichts geaendert hat.
@@ -445,22 +693,48 @@ def validierung_animation(werte: pd.DataFrame, kennzahl: str = "unpünktlich"):
         legend=dict(font=dict(size=30), x=1.01, xanchor="left",
                     y=1.0, yanchor="top", bgcolor="rgba(0,0,0,0)"),
         plot_bgcolor="white", paper_bgcolor="white",
-        margin=dict(t=190, l=130, r=260, b=110),
+        # Der untere Rand traegt die Achsenbeschriftung UND darunter die
+        # Differenzzeile aus dem HTML. Wer ihn verkleinert, muss RAND_UNTEN in
+        # scripts/animation_validierung.py mitziehen, sonst ueberlappt beides.
+        margin=dict(t=190, l=RAND_LINKS, r=RAND_RECHTS, b=RAND_UNTEN),
     )
 
-    # Ein Schritt = ein Klick. `daten` geht an Plotly.restyle, `layout` an
-    # Plotly.relayout.
+    # Ein Schritt = ein Klick. Zwei Arten:
+    #
+    #   {"layout": {...}}  geht unveraendert an Plotly.relayout — Ein- und
+    #                      Ausblenden von Titel und Hinweis.
+    #   {"balken": {...}}  laesst das HTML-Skript die beiden Balken einer Quelle
+    #                      GEMEINSAM von null auf ihren Wert hochfahren und
+    #                      setzt die Prozentzahl erst danach. `i` ist die
+    #                      Position auf der x-Achse, `y` und `text` folgen der
+    #                      Reihenfolge der Traces (erst Tram, dann U-Bahn).
+    #
+    # Warum Tram und U-Bahn gleichzeitig und nicht nacheinander: Die Aussage der
+    # Szene ist das VERHAELTNIS der beiden. Wer sie nacheinander wachsen laesst,
+    # laedt zum Lesen der Einzelwerte ein; wer sie zusammen wachsen laesst, zeigt
+    # den Abstand.
     schritte = [
         {"layout": {"annotations[0].visible": True}},
         {"layout": {"annotations[1].visible": True}},
-        {"daten": {"y": [[hoehen["Tram"][0], None],
-                         [hoehen["U-Bahn"][0], None]],
-                   "text": [[beschriftungen["Tram"][0], ""],
-                            [beschriftungen["U-Bahn"][0], ""]]}},
-        {"daten": {"y": [hoehen["Tram"], hoehen["U-Bahn"]],
-                   "text": [beschriftungen["Tram"],
-                            beschriftungen["U-Bahn"]]}},
     ]
+    for i in range(len(quellen)):
+        schritte.append({"balken": {
+            "i": i,
+            "y": [hoehen["Tram"][i], hoehen["U-Bahn"][i]],
+            "text": [beschriftungen["Tram"][i], beschriftungen["U-Bahn"][i]],
+        }})
+
+    # Letzter Klick: die Differenz je Quelle, als eigene Zeile unter der Grafik.
+    #
+    # Geschrieben als Prozentwert und nicht in Prozentpunkten. Fachlich ist die
+    # Differenz zweier Anteile ein Prozentpunkt-Wert; im Video ist "pp" aber eine
+    # Vokabel, die erklaert werden muesste, und dafuer ist keine Zeit. Wer genau
+    # sein will, sagt beim Sprechen "dreizehn Prozentpunkte" — im Bild steht die
+    # Zahl mit Prozentzeichen.
+    schritte.append({"differenz": [
+        _de(abs(hoehen["Tram"][i] - hoehen["U-Bahn"][i]), 1) + " %"
+        for i in range(len(quellen))
+    ]})
     return fig, schritte
 
 
@@ -513,24 +787,25 @@ def validierungsvergleich(werte: pd.DataFrame, monat: str = "") -> go.Figure:
         fig.update_yaxes(range=[0, hoechster * 1.30], gridcolor="#ECEFF1",
                          zeroline=False, ticksuffix=" %",
                          row=1, col=spalte)
-        fig.update_xaxes(showgrid=False, row=1, col=spalte)
+        # tickangle=0, sonst dreht plotly die Kategorien in schmalen Fenstern
+        # schraeg und laeuft in die Differenzzeile darunter.
+        fig.update_xaxes(showgrid=False, tickangle=0, row=1, col=spalte)
 
-        # Das Verhaeltnis unter jede Quelle. Es ist der eigentliche Beleg: Die
-        # beiden Faktoren stehen nebeneinander und sind fast gleich, waehrend die
-        # Balkenhoehen es nicht sind.
+        # Der Abstand zwischen den Netzen unter jede Quelle — gross und fett.
+        # Das ist der eigentliche Beleg der Grafik: Die beiden Zahlen stehen
+        # nebeneinander und sind fast gleich, waehrend die Balkenhoehen es nicht
+        # sind. Wer nur auf die Balken sieht, liest den Niveauunterschied; wer
+        # diese Zahlen liest, sieht die Uebereinstimmung.
         for i, q in enumerate(quellen):
-            gross, klein = (tabelle.loc[(kennzahl, q), "Tram"],
-                            tabelle.loc[(kennzahl, q), "U-Bahn"])
-            if klein > gross:
-                gross, klein = klein, gross
-                wer = "U-Bahn"
-            else:
-                wer = "Tram"
+            abstand = abs(tabelle.loc[(kennzahl, q), "Tram"]
+                          - tabelle.loc[(kennzahl, q), "U-Bahn"])
+            # "%" statt "pp": Fachlich ist die Differenz zweier Anteile ein
+            # Prozentpunkt-Wert, aber "pp" muesste im Video erklaert werden.
             fig.add_annotation(
-                x=i, y=0, yshift=-46, xref=f"x{spalte if spalte > 1 else ''}",
+                x=i, y=0, yshift=-56, xref=f"x{spalte if spalte > 1 else ''}",
                 yref=f"y{spalte if spalte > 1 else ''}",
-                text=f"{wer} <b>{_de(gross / klein)}×</b>", showarrow=False,
-                font=dict(size=15, color="#616161"))
+                text=f"Differenz: <b>{_de(abstand, 1)} %</b>",
+                showarrow=False, font=dict(size=21, color="#37474F"))
 
     for ann in fig.layout.annotations[:len(kennzahlen)]:   # die Facettentitel
         ann.update(font=dict(size=18, color="#37474F"))
@@ -727,5 +1002,324 @@ def tagesgang(
                     xanchor="left", x=0.01,
                     bgcolor="rgba(255,255,255,0.88)"),
         plot_bgcolor="white", height=430,
+    )
+    return fig
+
+
+# ── Tagesgang der Verspätung, Tram gegen U-Bahn ──────────────────────────────
+#
+# Wozu die Grafik da ist: Sie prueft die naheliegendste Erklaerung fuer
+# Verspaetung — den Berufsverkehr. Wenn volle Bahnen und langer Fahrgastwechsel
+# die Ursache waeren, muesste das Maximum in der Hauptverkehrszeit liegen.
+#
+# Bei der U-Bahn tut es das (16 Uhr). Bei der Tram nicht: Sie hat zwar auch
+# einen Nachmittagsgipfel, ihr Maximum liegt aber um 22 Uhr, wenn die Bahnen
+# leer sind. Genau dort wechselt der Fahrplan vom 10- auf den 20-Minuten-Takt.
+#
+# ── Warum zwei Felder und nicht zwei Linien in einem ─────────────────────────
+#
+# Die Niveaus liegen um den Faktor 2,5 auseinander (Tram bis 9,9 %, U-Bahn bis
+# 4,1 %). In einem gemeinsamen Feld mit gemeinsamer Achse waere die U-Bahn eine
+# fast gerade Linie am unteren Rand, und ihr Nachmittagsgipfel — die halbe
+# Aussage der Grafik — waere nicht mehr zu sehen. Zwei Achsen in EINEM Feld sind
+# keine Option: Zwei verschiedene y-Skalen uebereinander sind der klassische
+# Diagrammfehler, weil die Schnittpunkte der Linien dann etwas zu bedeuten
+# scheinen. Zwei getrennte Felder sagen dasselbe ohne diese Falle.
+#
+# Damit die Niveaus trotzdem nicht verlorengehen, steht in jedem Feld der
+# Tagesdurchschnitt des Netzes.
+#
+# ── Warum "Anteil zu spaet" und nicht der Mittelwert ─────────────────────────
+#
+# Der Mittelwert ueber alle Abfahrten verrechnet Verfruehung gegen Verspaetung.
+# Um 19 Uhr faehrt die Tram so oft zu frueh, dass ihr Mittelwert auf 9,8 s
+# faellt — die Kurve saehe dort nach einem Bestwert aus, obwohl 27,8 % der
+# Abfahrten verspaetet sind. Der Anteil jenseits von VERSPAETET_SCHWELLE_S
+# kennt dieses Problem nicht: Verfruehte Abfahrten zaehlen nicht mit und koennen
+# nichts ausgleichen.
+
+TEXTE_TAGESGANG_NETZE = {
+    "achse_x": "Uhrzeit",
+    "achse_y": "Anteil der Abfahrten mehr als 3½ Minuten zu spät",
+    "hvz": "Hauptverkehrszeit",
+    "mittel": "Tagesmittel {wert} %",
+    "gipfel": "{stunde} Uhr — {wert} %",
+}
+
+# Die schattierten Baender. Kein amtlicher Begriff, sondern die Zeiten, in denen
+# der Berufsverkehr in Berlin ueblicherweise liegt; sie sind das, wogegen die
+# Grafik prueft.
+HVZ_BAENDER = [(6.5, 9.5), (14.5, 18.5)]
+
+# Erste Stunde des Betriebstags. Die Achse laeuft von hier 24 Stunden weiter,
+# der Nachtverkehr steht damit am Ende statt am Anfang.
+TAGESBEGINN = 4
+
+
+INDIZES_NETZE = {"Tram": "tram-departures-v2", "U-Bahn": "ubahn-departures-v2"}
+SPALTE_SPAET = "zu spät ≥240s (%)"
+
+
+def tagesgang_netze_anteile(es, nur_werktage: bool = True) -> pd.DataFrame:
+    """Anteil zu frueher und zu spaeter Abfahrten je Stunde und Netz.
+
+    Eine Aggregation je Index. `nur_werktage` filtert auf `is_weekend: false` —
+    am Wochenende gibt es keinen Berufsverkehr, gegen den sich pruefen liesse.
+
+    Liegt hier und nicht im Skript, damit Notebook und
+    scripts/grafik_tagesgang_netze.py dieselbe Abfrage benutzen.
+    """
+    from src.analysis.quality import VERSPAETET_SCHWELLE_S, analysefenster_query
+
+    zeilen = []
+    for netz, index in INDIZES_NETZE.items():
+        frage = analysefenster_query()
+        filter_ = frage["bool"].setdefault("filter", [])
+        filter_.append({"exists": {"field": "delay_s"}})
+        if nur_werktage:
+            filter_.append({"term": {"is_weekend": False}})
+
+        antwort = es.search(index=index, size=0, query=frage, aggs={"h": {
+            "terms": {"field": "hour_of_day", "size": 24,
+                      "order": {"_key": "asc"}},
+            "aggs": {
+                "spaet": {"filter": {"range": {"delay_s": {"gte": VERSPAETET_SCHWELLE_S}}}},
+                "frueh": {"filter": {"range": {"delay_s": {"lte": VERFRUEHT_SCHWELLE_S}}}},
+            }}})
+        for eimer in antwort["aggregations"]["h"]["buckets"]:
+            n = eimer["doc_count"]
+            zeilen.append({
+                "Netz": netz, "stunde": eimer["key"], "n": n,
+                SPALTE_SPAET: eimer["spaet"]["doc_count"] / n * 100,
+                "zu früh (%)": eimer["frueh"]["doc_count"] / n * 100,
+            })
+    return pd.DataFrame(zeilen)
+
+
+def tagesgang_netzvergleich(werte: pd.DataFrame,
+                            spalte: str = "zu spät ≥240s (%)") -> go.Figure:
+    """Anteil verspaeteter Abfahrten je Stunde, Tram ueber U-Bahn.
+
+    `werte` braucht die Spalten `Netz`, `stunde`, `n` und `spalte` — so wie
+    scripts/grafik_tagesgang_netze.py sie erzeugt.
+    """
+    from plotly.subplots import make_subplots
+
+    netze = ["Tram", "U-Bahn"]
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        vertical_spacing=0.11)
+
+    for zeile, netz in enumerate(netze, start=1):
+        t = werte[werte["Netz"] == netz].copy()
+        t["x"] = t["stunde"].where(t["stunde"] >= TAGESBEGINN,
+                                   t["stunde"] + 24)
+        t = t.sort_values("x")
+        farbe = FARBE_NETZ[netz]
+        hoechster = t[spalte].max()
+        achse = "" if zeile == 1 else str(zeile)
+
+        for von, bis in HVZ_BAENDER:
+            fig.add_shape(type="rect", x0=von, x1=bis, y0=0, y1=1,
+                          xref=f"x{achse}", yref=f"y{achse} domain",
+                          fillcolor="#ECEFF1", line_width=0, layer="below")
+
+        fig.add_trace(go.Scatter(
+            x=t["x"], y=t[spalte], mode="lines",
+            line=dict(color=farbe, width=3.5), showlegend=False,
+            customdata=t["stunde"],
+            hovertemplate="%{customdata} Uhr: %{y:.2f} %<extra></extra>",
+        ), row=zeile, col=1)
+
+        # Der Gipfel ist die Aussage — er bekommt einen Punkt und seine Zahl.
+        gipfel = t.loc[t[spalte].idxmax()]
+        fig.add_trace(go.Scatter(
+            x=[gipfel["x"]], y=[gipfel[spalte]], mode="markers",
+            marker=dict(color=farbe, size=16, line=dict(color="white", width=3)),
+            showlegend=False, hoverinfo="skip",
+        ), row=zeile, col=1)
+        fig.add_annotation(
+            x=gipfel["x"], y=gipfel[spalte], row=zeile, col=1,
+            text="<b>" + TEXTE_TAGESGANG_NETZE["gipfel"].format(
+                stunde=int(gipfel["stunde"]), wert=_de(gipfel[spalte])) + "</b>",
+            showarrow=False, yshift=32, xanchor="center",
+            font=dict(size=18, color=farbe))
+
+        # Netzname und Tagesmittel links oben im Feld, statt eines Feldtitels.
+        mittel = (t[spalte] * t["n"]).sum() / t["n"].sum()
+        fig.add_annotation(
+            x=0.005, y=1.0, xref=f"x{achse} domain", yref=f"y{achse} domain",
+            xanchor="left", yanchor="top", showarrow=False,
+            text=(f"<b>{netz}</b>   <span style='color:#90A4AE'>"
+                  + TEXTE_TAGESGANG_NETZE["mittel"].format(wert=_de(mittel))
+                  + "</span>"),
+            font=dict(size=21, color=farbe))
+
+        fig.update_yaxes(range=[0, hoechster * 1.35], gridcolor="#ECEFF1",
+                         zeroline=False, ticksuffix=" %", row=zeile, col=1)
+
+    # Die Baender einmal benennen — im oberen Feld, wo Platz ist.
+    von, bis = HVZ_BAENDER[0]
+    fig.add_annotation(
+        x=(von + bis) / 2, y=1.0, xref="x", yref="y domain",
+        yanchor="bottom", yshift=8, showarrow=False,
+        text=TEXTE_TAGESGANG_NETZE["hvz"],
+        font=dict(size=16, color="#90A4AE"))
+
+    # Betriebstag statt Kalendertag: 4 Uhr bis 3 Uhr. Sonst steht der
+    # Nachtverkehr als Gipfel am linken Bildrand und konkurriert optisch mit dem
+    # Abendgipfel, obwohl er derselbe Betriebsabend ist.
+    stellen = list(range(TAGESBEGINN, TAGESBEGINN + 24, 2))
+    beschriftung = [f"{s % 24} h" for s in stellen]
+    for zeile in (1, 2):
+        fig.update_xaxes(range=[TAGESBEGINN - 0.5, TAGESBEGINN + 23.5],
+                         tickvals=stellen, ticktext=beschriftung,
+                         showgrid=False, zeroline=False, row=zeile, col=1)
+    fig.update_xaxes(title=TEXTE_TAGESGANG_NETZE["achse_x"], row=2, col=1)
+    fig.update_layout(plot_bgcolor="white", height=560)
+    return fig
+
+
+# ── LSA-Gruppen, gemessen am Puenktlichkeitsfenster ──────────────────────────
+#
+# Die Zweitfassung zu szene3b_lsa_balken.png. Jene Grafik zeichnet `avg_delay_s`
+# — den Mittelwert von delay_s je Haltestelle, ueber die Gruppe gemittelt. Das
+# ist genau die Kennzahl, die Szene 4 des Films als irrefuehrend vorfuehrt:
+# Verfruehungen tragen negative Werte und ziehen den Mittelwert nach unten.
+#
+# Der Unterschied ist nicht kosmetisch, er dreht das Ergebnis um. Die sieben
+# Halte mit belegt abgeschalteter Beeinflussung stehen im Mittelwert bei 41,1 s
+# gegen 27,8 s der aktiven Gruppe — und sehen damit deutlich schlechter aus. Am
+# Puenktlichkeitsfenster gemessen liegen sie bei 11,0 % ausserhalb gegen 15,4 %.
+# Der Grund steht in der Aufspaltung dieser Grafik: Sie fahren nur halb so oft
+# zu frueh (4,9 % gegen 10,2 %), ihr Mittelwert wird also nicht nach unten
+# gezogen.
+#
+# ── Zwei Fassungen, und nur eine davon darf ins Video ────────────────────────
+#
+# richtungen=False (Vorgabe) zeigt NUR die Verspaetung. Das ist die Fassung fuer
+# Szene 6. Der Grund ist dramaturgisch und bindend: Die Verfruehung ist die
+# Aufloesung von Szene 8. Wer sie in Szene 6 ins Bild nimmt, verschenkt sie —
+# dieselbe Regel gilt fuer die geteilte Richtungsgrafik in Szene 5.
+#
+# richtungen=True stapelt beide Anteile. Diese Fassung erklaert, warum die
+# Mittelwertgrafik ins Gegenteil zeigt, und gehoert in die Anmerkungen und in
+# die Fragerunde — nicht in den Film.
+#
+# ── Die Gruppe "auffaellig" ist zirkulaer ────────────────────────────────────
+#
+# Sie ist definiert als "aktiv UND avg_delay_s > Mittel + 1,5 sigma der aktiven
+# Gruppe" — also als deren oberes Ende. Dass sie hohe Werte hat, ist kein
+# Befund, sondern ihre Definition. Sie steht hier nur, weil die bestehende
+# Grafik und der Sprechtext sie fuehren; in einer Aussage darf sie nicht
+# vorkommen.
+
+TEXTE_LSA_FENSTER = {
+    "achse_spaet": "Anteil der Abfahrten mehr als 3½ Minuten zu spät",
+    "achse_mittel": "Mittlere Abweichung von der Fahrplanzeit",
+    "achse_verspaetung": "Verspätungen ab 0 Sekunden je Abfahrt",
+    "achse_ueberzug": "Verspätungen von mehr als 3½ Minuten je Abfahrt",
+    "gruppen": {
+        "kein_lsa":              "keine Ampel<br>in der Nähe",
+        "aktiv":                 "Beeinflussung<br>angenommen",
+        "potentiell_ineffektiv": "Ampel,<br>auffällig hohe Verspätung",
+        "inaktiv":               "Beeinflussung<br>belegt abgeschaltet",
+    },
+    "halte": "{n} Halte",
+}
+
+# Welche Spalte auf welche Achsenbeschriftung und welche Einheit geht.
+#
+# Vier Kennzahlen fuer dieselben Gruppen, und sie sagen Verschiedenes — genau
+# das ist die Aussage von Szene 6:
+#
+#     Ø delay_s          Mittelwert, verrechnet Verfruehung gegen Verspaetung
+#     Ø Verspätung (s)   Nullpunkt Fahrplanzeit — Verfruehung zaehlt 0
+#     zu spät (%)        zaehlt nur, DASS die Grenze ueberschritten wird
+#     Ø über Fenster (s) misst in Sekunden AB der Grenze — die 3½ Minuten
+#                        sind die Null, verfruehte Abfahrten stehen auf 0
+#
+# Die beiden mittleren sind die Bruecken. `Ø Verspätung (s)` beantwortet
+# "bleibt der Abstand, wenn nur noch Verspaetung zaehlt?", ohne die Einheit zu
+# wechseln; `Ø über Fenster (s)` legt zusaetzlich den Vertragsmassstab an. Wer
+# den Balkenabstand aus der ersten Kennzahl fuer einen Ampeleffekt haelt, muss
+# erklaeren, warum er in den anderen dreien nicht auftaucht.
+ACHSEN_LSA = {
+    "zu spät (%)":        ("achse_spaet",       " %"),
+    "Ø delay_s":          ("achse_mittel",      " s"),
+    "Ø Verspätung (s)":   ("achse_verspaetung", " s"),
+    "Ø über Fenster (s)": ("achse_ueberzug",    " s"),
+}
+SPALTE_VERSPAETUNG = "Ø Verspätung (s)"
+SPALTE_UEBERZUG = "Ø über Fenster (s)"
+
+# Dieselben Farben wie die Karte in derselben Szene (Notebook 03, Abschnitt 5):
+# grau = keine Anlage, gruen = Anlage im Radius, rot = Anlage aus der
+# Drucksache. Wer die Balken umfaerbt, muss die Karte mitfaerben.
+#
+# Gruen neben Rot ist bei Farbfehlsichtigkeit der klassische Problemfall. Hier
+# vertretbar, weil jeder Balken seine eigene Beschriftung und seinen Wert traegt
+# — die Farbe ist Wiedererkennung zur Karte, nicht die einzige Kodierung.
+FARBE_LSA = {
+    "kein_lsa":              "#9E9E9E",
+    "aktiv":                 "#4CAF50",
+    "potentiell_ineffektiv": "#FF9800",
+    "inaktiv":               "#F44336",
+}
+
+# ── Drei Gruppen, nicht vier ─────────────────────────────────────────────────
+#
+# `potentiell_ineffektiv` ist NICHT enthalten. Die Gruppe ist definiert als
+# "aktiv UND avg_delay_s ueber Mittel + 1,5 sigma der aktiven Gruppe" — also als
+# deren oberes Ende. Schneidet man sie heraus, sinkt der Rest der aktiven Gruppe
+# kuenstlich ab, und der Abstand zur inaktiven Gruppe waechst:
+#
+#     zu spaet, aktiv gegen inaktiv   getrennt 1,17x   zusammengefuehrt 1,03x
+#
+# Die Abspaltung erzeugt damit genau den Effekt, den die Grafik zeigen soll.
+# Zusammengefuehrt am 19.08.2026. Die vierte Gruppe bleibt ueber `--getrennt`
+# erreichbar, um den Unterschied vorfuehren zu koennen.
+REIHENFOLGE_LSA = ["kein_lsa", "aktiv", "inaktiv"]
+
+REIHENFOLGE_LSA_GETRENNT = ["kein_lsa", "aktiv", "potentiell_ineffektiv",
+                            "inaktiv"]
+
+
+def lsa_balken(werte: pd.DataFrame, spalte: str = "zu spät (%)") -> go.Figure:
+    """Balken je LSA-Gruppe. `spalte` ist ein Schluessel aus ACHSEN_LSA.
+
+    Die Reihenfolge und damit auch die Zahl der Gruppen kommt aus der Spalte
+    `gruppe` von `werte` — das Skript entscheidet, ob zusammengefuehrt wird.
+    """
+    if spalte not in ACHSEN_LSA:
+        raise KeyError(f"unbekannte Spalte {spalte!r}; "
+                       f"bekannt sind {sorted(ACHSEN_LSA)}")
+    schluessel, einheit = ACHSEN_LSA[spalte]
+    gesehen = set(werte["gruppe"])
+    ordnung = [g for g in REIHENFOLGE_LSA_GETRENNT if g in gesehen]
+    t = werte.set_index("gruppe").reindex(ordnung)
+
+    fig = go.Figure(go.Bar(
+        x=[TEXTE_LSA_FENSTER["gruppen"][g] for g in t.index],
+        y=t[spalte], width=0.55,
+        marker_color=[FARBE_LSA[g] for g in t.index],
+        text=[f"<b>{_de(v)}{einheit}</b>" for v in t[spalte]],
+        textposition="outside", cliponaxis=False,
+        textfont=dict(size=27, color="#37474F"),
+        showlegend=False,
+        hovertemplate="%{x}: %{text}<extra></extra>",
+    ))
+
+    for i, g in enumerate(t.index):
+        fig.add_annotation(
+            x=i, y=0, yshift=-58, showarrow=False, xanchor="center",
+            text=TEXTE_LSA_FENSTER["halte"].format(n=int(t.loc[g, "Halte"])),
+            font=dict(size=17, color="#90A4AE"))
+
+    fig.update_layout(
+        xaxis=dict(showgrid=False, tickangle=0, zeroline=False),
+        yaxis=dict(title=TEXTE_LSA_FENSTER[schluessel],
+                   range=[0, float(t[spalte].max()) * 1.30],
+                   gridcolor="#ECEFF1", zeroline=False, ticksuffix=einheit),
+        plot_bgcolor="white", height=520,
     )
     return fig

@@ -65,7 +65,35 @@ INDEX_LSA = "lsa-standorte"
 # dieses Radius liegt. Derselbe Wert wie in src/collector/enrich_lsa_tram.py,
 # mit dem der Status im Index vergeben wurde — ein anderer Radius hier würde
 # Haltestellen Anlagen zuordnen, die bei der Statusvergabe nie gesehen wurden.
-# Notebook 03 prüft 100/150/200/250 m; der Befund hängt nicht am Radius.
+# ── Der Befund HÄNGT am Radius (geprüft am 19.08.2026) ───────────────────────
+#
+# Hier stand bis zum 19.08.2026 „der Befund hängt nicht am Radius". Das ist
+# falsch. Notebook 03, Zelle `3ef3dcb4`, prüft H6b (erzeugte Verspätung je
+# Zielhalt gegen das übrige Netz, Mann-Whitney-U einseitig):
+#
+#     Radius    n inaktiv   Median      p        r
+#      100 m        4        4,41 s   0,213    +0,232
+#      150 m        6        5,36 s   0,022    +0,479   <- der berichtete Wert
+#      200 m        7        4,56 s   0,114    +0,266
+#      250 m        8        4,41 s   0,157    +0,209
+#
+# Signifikant ist der Befund nur bei genau diesem Radius. Nach oben verwässert
+# er, weil weiter entfernte inaktive Anlagen zusätzliche Halte in die Gruppe
+# ziehen; nach unten fallen zwei der dokumentierten Anlagen aus dem Umkreis.
+#
+# Das ist der stärkste Angriffspunkt der LSA-Analyse und gehört von selbst
+# angesprochen, nicht erst auf Nachfrage. Der Wert 150 bleibt trotzdem stehen —
+# er ist derselbe wie in src/collector/enrich_lsa_tram.py, mit dem der Status im
+# Index vergeben wurde. Ein anderer Radius hier würde Haltestellen Anlagen
+# zuordnen, die bei der Statusvergabe nie gesehen wurden. Er ist also gesetzt,
+# nicht optimiert — aber getragen wird er von der Konsistenz, nicht vom
+# Ergebnis.
+#
+# Auch die KENNZAHL trägt: Mit einer anderen positiv gewendeten Variante (Summe
+# der positiven Deltas je Halt aus segmente_tram_gesamt.parquet) bleibt der
+# Effekt über 150–250 m stabil. Das ist kein Gegenbeweis, sondern ein zweiter
+# Freiheitsgrad — und ein weiterer Grund, auf diesen Befund keine Empfehlung zu
+# bauen. Berichtet wird die dokumentierte Kennzahl `delta_verspaetung`.
 RADIUS_METERS = 150
 
 # ── Zwei Dimensionen, nicht eine Skala ───────────────────────────────────────

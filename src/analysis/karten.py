@@ -281,6 +281,30 @@ def anteile_je_haltestelle(es, index: str, schwelle_frueh_s: int,
     Eine einzige Aggregation. Nenner ist ueberall die Zahl der Abfahrten MIT
     Echtzeitwert — die Filter koennen nur solche Dokumente treffen, ein anderer
     Nenner wuerde die Anteile systematisch kleinrechnen.
+
+    ── Drei Sekundenkennzahlen, drei Nullpunkte ─────────────────────────────
+
+    `anteil_spaet` zaehlt nur, DASS eine Abfahrt jenseits der Grenze liegt, und
+    `avg_delay_s` misst in Sekunden, verrechnet dafuer aber Verfruehung gegen
+    Verspaetung — die Kennzahl, die Szene 4 des Films als irrefuehrend vorfuehrt.
+    Dazwischen liegen zwei Kennzahlen, die in Sekunden messen, ohne
+    gegenzurechnen. Beide sind `mean(max(delay_s - schwelle, 0))` ueber alle
+    Abfahrten mit Echtzeitwert; sie unterscheiden sich nur im Nullpunkt:
+
+        avg_delay_s     Verfruehung zaehlt NEGATIV und zieht den Wert herunter
+        verspaetung_s   Nullpunkt Fahrplanzeit — reine Verspaetung, Verfruehung 0
+        ueberzug_s      Nullpunkt `schwelle_spaet_s` — nur was der Vertrag
+                        ueberhaupt als Verspaetung zaehlt (3½ Minuten)
+
+    Der Unterschied zwischen den ersten beiden isoliert genau den Effekt, den
+    Szene 4 vorfuehrt: Was von einem Abstand uebrig bleibt, wenn Verfruehung
+    ihn nicht mehr mit erzeugen darf.
+
+    Gerechnet ohne Script-Aggregation, aus zwei Filter-Teilaggregationen:
+    Summe der Ueberschreitungen = n * (Mittelwert der Gefilterten - Schwelle).
+    Das ist exakt und kostet nur zwei weitere Teilaggregationen — eine
+    Script-Aggregation ueber 14 Mio. Dokumente kostet auf dem Pi mit 0,5 GB
+    Heap deutlich mehr.
     """
     import pandas as pd
 
@@ -294,7 +318,10 @@ def anteile_je_haltestelle(es, index: str, schwelle_frueh_s: int,
                 "zu_frueh":  {"filter": {"range": {
                     "delay_s": {"lte": schwelle_frueh_s}}}},
                 "zu_spaet":  {"filter": {"range": {
-                    "delay_s": {"gte": schwelle_spaet_s}}}},
+                    "delay_s": {"gte": schwelle_spaet_s}}},
+                    "aggs": {"avg": {"avg": {"field": "delay_s"}}}},
+                "ab_null":   {"filter": {"range": {"delay_s": {"gte": 0}}},
+                              "aggs": {"avg": {"avg": {"field": "delay_s"}}}},
                 "ort":       {"top_hits": {"size": 1,
                                            "_source": ["stop_location"]}},
             },
@@ -312,8 +339,17 @@ def anteile_je_haltestelle(es, index: str, schwelle_frueh_s: int,
         n = eimer["n_delay"]["value"]
         if not n:
             continue
+        k_spaet = eimer["zu_spaet"]["doc_count"]
         frueh = eimer["zu_frueh"]["doc_count"] / n * 100
-        spaet = eimer["zu_spaet"]["doc_count"] / n * 100
+        spaet = k_spaet / n * 100
+        # Kein verspaetetes Dokument heisst kein Ueberzug — der Mittelwert ist
+        # dann None, die Summe aber nachweislich null.
+        summe_ueberzug = (0.0 if not k_spaet else
+                          k_spaet * (eimer["zu_spaet"]["avg"]["value"]
+                                     - schwelle_spaet_s))
+        k_null = eimer["ab_null"]["doc_count"]
+        summe_verspaetung = (0.0 if not k_null else
+                             k_null * eimer["ab_null"]["avg"]["value"])
         zeilen.append({
             "stop_name": eimer["key"],
             "lat": ort["lat"], "lon": ort["lon"],
@@ -321,6 +357,8 @@ def anteile_je_haltestelle(es, index: str, schwelle_frueh_s: int,
             "count": n,
             "anteil_frueh": frueh,
             "anteil_spaet": spaet,
+            "verspaetung_s": summe_verspaetung / n,
+            "ueberzug_s": summe_ueberzug / n,
             "anteil_ausserhalb": frueh + spaet,
             "uebergewicht": spaet - frueh,
         })

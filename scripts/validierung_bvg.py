@@ -27,12 +27,32 @@ Drei der vier amtlichen Kennzahlen lassen sich nachrechnen, eine nicht:
                                 liegen in src/analysis/takt.py, die Zuordnung
                                 Fahrt -> Takt fehlt noch
 
-**Die Niveaus dürfen nicht als Gleichstand gelesen werden.** Der Monitor zählt je
-**Fahrt**, diese Erhebung je **Abfahrtsereignis an einer Haltestelle**. Eine Fahrt
-gilt amtlich als pünktlich, wenn sie es insgesamt war; hier zählt jeder einzelne
-Halt. Weil eine Fahrt an dreißig Halten dreißig Gelegenheiten hat, aus dem Fenster
-zu fallen, liegt die eigene Quote systematisch NIEDRIGER. Vergleichbar sind
-deshalb die **Abstände zwischen den Netzen**, nicht die absoluten Werte.
+**Die Niveaus dürfen nicht als Gleichstand gelesen werden.** Der Monitor weist
+**Fahrten** aus, diese Erhebung **Abfahrtsereignisse an einer Haltestelle**.
+
+**Was NICHT bekannt ist — geprüft am 17.08.2026:** `data/bvg/definition.md` nennt
+die Zähleinheit („Anteil der erbrachten Fahrten"), aber nicht die Regel, nach der
+eine Fahrt als pünktlich gilt — an allen Halten, an einem Messpunkt, im Mittel.
+
+Zwei naheliegende Regeln lassen sich mit trip_id nachrechnen und BEIDE scheiden
+aus. Mittwoch, 13.05.2026, Fenster ]-120 s, +240 s[:
+
+    Regel                          Tram      U-Bahn    amtlich (Mai)
+    je Halt (diese Erhebung)       86,9 %    96,5 %    87,0 / 98,0 %
+    je Fahrt, alle Halte im Fenster 64,4 %   91,3 %
+    je Fahrt, nur der erste Halt   98,0 %    99,7 %
+
+„Alle Halte" liegt 22 Punkte unter dem amtlichen Wert, „erster Halt" zwei darüber.
+Die Messung je Halt trifft ihn am besten.
+
+**Folge:** Der frühere Satz „eine Fahrt mit dreißig Halten hat dreißig Gelegenheiten,
+aus dem Fenster zu fallen, deshalb liegt meine Quote niedriger" war FALSCH. Er
+unterstellt die Alle-Halte-Regel, und die ist ausgeschlossen. Der Rest-Abstand über
+den ganzen Mai (84,4 % gegen 86,9 % bei der Tram) ist real, aber UNERKLÄRT — nicht
+durch die Zähleinheit erklärt.
+
+Belastbar bleibt: Die **Abstände zwischen den Netzen** stimmen in jedem Monat
+überein. Die absoluten Niveaus nicht nebeneinanderstellen.
 """
 
 from __future__ import annotations
