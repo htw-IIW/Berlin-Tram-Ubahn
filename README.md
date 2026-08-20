@@ -1,4 +1,4 @@
-# Berlin Tram & U-Bahn — Delay Analysis
+# Berlin Tram & U-Bahn Delay Analysis
 
 A semester project at HTW Berlin on the punctuality of Berlin's tram and subway
 networks, submitted jointly for two courses: **NoSQL Databases** (Elasticsearch
@@ -9,7 +9,7 @@ notebooks. Two collectors poll the BVG realtime API every 60 seconds and write
 departures and disruptions into Elasticsearch. Everything downstream reads from there.
 
 You can point it at an existing cluster, or follow the setup below and run your own
-collection from scratch — the pipeline is self-contained and seeds its own reference
+collection from scratch; the pipeline is self-contained and seeds its own reference
 data.
 
 > The analysis notebooks are kept out of the repository while the work is in progress
