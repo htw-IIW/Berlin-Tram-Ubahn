@@ -44,5 +44,5 @@ logs/*
 
 docs/
 
-notebooks/04_delay_propagation.ipynb
-notebooks/05_kosten.ipynb
+# Notebooks bleiben lokal - das Repo ist oeffentlich
+notebooks/
