@@ -155,8 +155,14 @@ def _de(x, n=1):
 
 
 def _dauer(sekunden: int) -> str:
-    """„1 Minute" / „3 Minuten" — sonst steht im Bild „mindestens 1 Minuten"."""
-    minuten = abs(sekunden) // 60
+    """„1 Minute" / „3 Minuten" — sonst steht im Bild „mindestens 1 Minuten".
+
+    Halbe Minuten bekommen ihr Bruchzeichen: 210 s ist die amtliche
+    Verspaetungsgrenze und heisst im Film „dreieinhalb Minuten", nicht „drei".
+    """
+    minuten, rest = divmod(abs(sekunden), 60)
+    if rest == 30:
+        return f"{minuten}½ Minuten"
     return f"{minuten} Minute" if minuten == 1 else f"{minuten} Minuten"
 
 
@@ -841,11 +847,15 @@ def validierungsvergleich(werte: pd.DataFrame, monat: str = "") -> go.Figure:
 # schon gefuehrt. Vier Linien auf 24 Stuetzstellen sind im Video ohnehin nicht
 # lesbar.
 #
-# Farben: dieselben wie auf den Karten (FARBE_FRUEH tuerkis, FARBE_SPAET orange).
+# Farben: dieselben wie auf den Karten (FARBE_FRUEH lila, FARBE_SPAET orange).
 # Das ist Absicht — wer die Karte gesehen hat, liest die Linien ohne Legende.
-# Geprueft mit scripts/validate_palette.js des dataviz-Skills: Abstand 19,0
-# (OKLab x100) unter Protanopie, 35,2 unter Tritanopie, 30,2 bei normalem Sehen.
+# Geprueft mit scripts/validate_palette.js des dataviz-Skills: Abstand 28,7
+# (OKLab x100) unter Protanopie, 26,2 unter Tritanopie, 32,6 bei normalem Sehen.
 # Alle drei weit ueber der Grenze von 8.
+#
+# Bis zum 26.08.2026 war "zu frueh" tuerkis #0097A7. Wird hier umgefaerbt, muss
+# karten.FARBE_FRUEH mit — sonst zeigen Karte und Tagesgang dieselbe Sache in
+# zwei Farben, und der Verzicht auf eine Legende faellt in sich zusammen.
 #
 # ACHTUNG, anderer Filter als anteile_pro_richtung(): Hier wird das
 # Analysefenster inklusive Collector-Ausfall angewandt. Bei einer Auswertung nach
@@ -853,7 +863,7 @@ def validierungsvergleich(werte: pd.DataFrame, monat: str = "") -> go.Figure:
 # den Tag abgetastet, einzelne Stunden waeren dadurch verzerrt. Die Fallzahl
 # faellt dadurch von 11,4 auf 9,8 Mio.
 
-FARBE_TAG_FRUEH = "#0097A7"   # identisch mit karten.FARBE_FRUEH
+FARBE_TAG_FRUEH = "#7B1FA2"   # identisch mit karten.FARBE_FRUEH
 FARBE_TAG_SPAET = "#E65100"   # identisch mit karten.FARBE_SPAET
 
 # ── Was die Daten hier sagen, und was sie NICHT sagen ────────────────────────
@@ -885,16 +895,12 @@ FARBE_TAG_SPAET = "#E65100"   # identisch mit karten.FARBE_SPAET
 # Muster — ihr Verspaetungsmaximum liegt um 16 Uhr (3,5 %), also im
 # Berufsverkehr. Die Tram nicht.
 TEXTE_TAGESGANG = {
-    "titel": "Die Tram ist entweder zu früh oder zu spät — je nach Uhrzeit",
-    "untertitel": ("Anteil der Tram-Abfahrten außerhalb des Pünktlichkeitsfensters "
-                   "nach BVG-Verkehrsvertrag, je Tagesstunde. Die beiden Kurven "
-                   "laufen gegeneinander (Spearman −0,48)"),
-    "frueh": "zu früh",
-    "spaet": "zu spät",
-    "achse_x": "Tagesstunde",
+    "frueh": "{netz} zu früh",
+    "spaet": "{netz} zu spät",
+    "fenster": "zu früh ab mehr als {frueh}, zu spät ab mehr als {spaet}",
+    "achse_x": "Uhrzeit",
     "achse_y": "Anteil der Abfahrten (%)",
-    "hinweis_frueh": "die meisten Verfrühungen —<br>und zugleich wenig Verspätung",
-    "hinweis_spaet": "die meisten Verspätungen —<br>und die wenigsten Verfrühungen",
+    "marke": "{stunde} Uhr {wert} %",
 }
 
 
@@ -903,16 +909,25 @@ def tagesgang_anteile(
     index: str = "tram-departures-v2",
     schwelle_frueh_s: int = VERFRUEHT_SCHWELLE_S,
     schwelle_spaet_s: int = VERSPAETET_SCHWELLE_S,
+    nur_werktage: bool = True,
 ) -> pd.DataFrame:
     """Anteil zu frueher und zu spaeter Abfahrten je Tagesstunde.
 
     Rueckgabe: eine Zeile je Stunde mit `stunde`, `n`, `zu früh (%)`,
     `zu spät (%)`.
+
+    `nur_werktage` ist wie bei `tagesgang_netze_anteile()` die Vorgabe. Am
+    Wochenende faehrt ein anderer Takt; wer den mit hineinrechnet, mittelt zwei
+    Fahrplaene zu einer Kurve und redet trotzdem ueber den Berufsverkehr. Der
+    Unterschied ist nicht klein: Um 19 Uhr faehrt die Tram werktags bei 16,5 %
+    ihrer Abfahrten zu frueh, ueber alle Tage gerechnet bei 15,3 %.
     """
     from src.analysis.quality import analysefenster_query
 
     frage = analysefenster_query()
     frage["bool"].setdefault("filter", []).append({"exists": {"field": "delay_s"}})
+    if nur_werktage:
+        frage["bool"]["filter"].append({"term": {"is_weekend": False}})
     antwort = es.search(
         index=index, size=0, query=frage,
         aggs={"stunden": {
@@ -938,6 +953,9 @@ def tagesgang(
     werte: pd.DataFrame,
     schwelle_frueh_s: int = VERFRUEHT_SCHWELLE_S,
     schwelle_spaet_s: int = VERSPAETET_SCHWELLE_S,
+    netzname: str = "Tram",
+    anzeige_frueh_s: int = -60,
+    anzeige_spaet_s: int = 210,
 ) -> go.Figure:
     """Zwei Linien ueber 24 Stunden, gemeinsame Achse.
 
@@ -945,63 +963,86 @@ def tagesgang(
     eine einzige y-Achse. Eine zweite Achse waere hier der klassische Fehler: Sie
     liesse den Massstab frei waehlbar und damit jede gewuenschte Kreuzung der
     beiden Linien erzeugen.
+
+    ── Ohne Titel, mit zwei Marken ─────────────────────────────────────────
+
+    Seit dem 21.08.2026 gebaut wie `tagesgang_netzvergleich()`: kein Titel und
+    kein Untertitel, weil die Aussage im Film gesprochen wird und eine
+    Bildueberschrift sie nur doppelt.
+
+    Seit dem 26.08.2026 steht ueber dem Bild GAR NICHTS mehr. Die Fensterangabe
+    ("zu frueh ab mehr als 1 Minute …") war als Ersatz an dieselbe Stelle
+    gesetzt worden, an der zuvor der Untertitel stand — die Nutzerin hat beides
+    entfernt. **Hier nichts wieder einsetzen.** Die Schwellen gehoeren in den
+    Sprechtext, nicht ins Bild.
+
+    Beschriftet werden die beiden Maxima, und zwar nur mit Uhrzeit und Wert.
+    Der frueher hier stehende Deutungstext ("die meisten Verfruehungen — und
+    zugleich wenig Verspaetung") nahm dem Sprechtext seinen Satz vorweg.
+
+    ── Warum die Beschriftung andere Zahlen nennt als die Rechnung ─────────
+
+    `schwelle_*_s` sind die Grenzen, mit denen gezaehlt wird (Projektfenster
+    −120 s / +240 s). `anzeige_*_s` sind die Grenzen, die in der Beschriftung
+    stehen (amtliches Fenster −60 s / +210 s). Beides bezeichnet dieselbe Menge
+    von Abfahrten, weil `delay_s` in Minuten quantisiert ist: Zwischen -60 und
+    -120 liegt kein Wert, zwischen 210 und 240 auch nicht. "Mehr als eine
+    Minute zu frueh" ist deshalb genau `delay_s <= -120`.
+
+    Wer die Anzeige auf -120 stellt, beschriftet die Grafik mit "mehr als zwei
+    Minuten" und behauptet damit eine strengere Auswahl, als getroffen wurde.
     """
     fig = go.Figure()
-    for spalte, farbe, name in (
+    for spalte, farbe, muster in (
         ("zu früh (%)", FARBE_TAG_FRUEH, TEXTE_TAGESGANG["frueh"]),
         ("zu spät (%)", FARBE_TAG_SPAET, TEXTE_TAGESGANG["spaet"]),
     ):
+        name = muster.format(netz=netzname)
         fig.add_trace(go.Scatter(
             x=werte["stunde"], y=werte[spalte], name=name,
-            mode="lines+markers", line=dict(color=farbe, width=3),
-            marker=dict(size=8, color=farbe,
-                        line=dict(width=2, color="white")),
+            mode="lines", line=dict(color=farbe, width=3.5),
             hovertemplate=f"%{{x}} Uhr — {name} %{{y:.1f}} %<extra></extra>",
         ))
 
     # Direktbeschriftung am jeweiligen Maximum. Die Position kommt aus den Daten,
     # damit sie nicht stehen bleibt, wenn die Erhebung weiterlaeuft und das
-    # Maximum auf eine andere Stunde wandert.
-    #
-    # Die Versaetze sind gegen die Kurven geprueft, nicht geraten: Beide Marken
-    # liegen im leeren Bereich oberhalb der jeweils anderen Linie. ay ist in
-    # plotly nach UNTEN positiv — negative Werte heben die Marke an.
-    for spalte, farbe, text, ax_px, ay_px in (
-        ("zu früh (%)", FARBE_TAG_FRUEH, TEXTE_TAGESGANG["hinweis_frueh"], -95, -45),
-        ("zu spät (%)", FARBE_TAG_SPAET, TEXTE_TAGESGANG["hinweis_spaet"], -55, -70),
-    ):
+    # Maximum auf eine andere Stunde wandert. Punkt plus Zahl wie im
+    # Netzvergleich, damit beide Tagesgang-Grafiken des Films gleich aussehen.
+    for spalte, farbe in (("zu früh (%)", FARBE_TAG_FRUEH),
+                          ("zu spät (%)", FARBE_TAG_SPAET)):
         i = werte[spalte].idxmax()
+        stunde, wert = int(werte.loc[i, "stunde"]), werte.loc[i, spalte]
+        fig.add_trace(go.Scatter(
+            x=[stunde], y=[wert], mode="markers", showlegend=False,
+            marker=dict(color=farbe, size=16, line=dict(color="white", width=3)),
+            hoverinfo="skip",
+        ))
         fig.add_annotation(
-            x=werte.loc[i, "stunde"], y=werte.loc[i, spalte],
-            text=f"<b>{werte.loc[i, 'stunde']} Uhr</b><br>{text}",
-            showarrow=True, arrowhead=0, arrowwidth=2, arrowcolor=farbe,
-            ax=ax_px, ay=ay_px, font=dict(size=14, color=farbe),
-            align="center", bgcolor="rgba(255,255,255,0.88)", borderpad=4,
-        )
+            x=stunde, y=wert, showarrow=False, yshift=32, xanchor="center",
+            text="<b>" + TEXTE_TAGESGANG["marke"].format(
+                stunde=stunde, wert=_de(wert)) + "</b>",
+            font=dict(size=18, color=farbe))
 
     # Kopfraum fuer die beiden Marken. Ohne ihn setzt plotly die Achse knapp
     # oberhalb des Maximums, und die obere Beschriftung wird am Rand abgeschnitten
     # — der Fehler faellt im PNG erst auf, wenn man es ansieht.
     hoechster = max(werte["zu früh (%)"].max(), werte["zu spät (%)"].max())
 
+    # KEINE Kopfzeile ueber dem Bild. Untertitel und Fensterangabe sind von der
+    # Nutzerin entfernt worden und bleiben entfernt — nichts an dieser Stelle
+    # wieder einsetzen.
     fig.update_layout(
-        title=dict(text=(f"<b>{TEXTE_TAGESGANG['titel']}</b><br>"
-                         f"<span style='font-size:15px;color:#616161'>"
-                         f"{TEXTE_TAGESGANG['untertitel']}<br>"
-                         f"zu früh ab {_dauer(schwelle_frueh_s)}, zu spät ab "
-                         f"{_dauer(schwelle_spaet_s)}</span>"),
-                   x=0.01, xanchor="left"),
         xaxis=dict(title=TEXTE_TAGESGANG["achse_x"], dtick=2, showgrid=False,
                    ticksuffix=" h", zeroline=False),
         yaxis=dict(title=TEXTE_TAGESGANG["achse_y"], range=[0, hoechster * 1.22],
                    gridcolor="#ECEFF1", zeroline=False, ticksuffix=" %"),
         # Legende unten links im Bild: Der Bereich zwischen 0 und 8 Uhr liegt
-        # unterhalb von 2,5 % und ist bei beiden Reihen frei. Oben rechts waere
-        # sie in den Untertitel gelaufen.
+        # unterhalb von 2,5 % und ist bei beiden Reihen frei.
         legend=dict(orientation="h", yanchor="bottom", y=0.02,
                     xanchor="left", x=0.01,
                     bgcolor="rgba(255,255,255,0.88)"),
-        plot_bgcolor="white", height=430,
+        margin=dict(t=70),
+        plot_bgcolor="white", height=470,
     )
     return fig
 
@@ -1041,9 +1082,9 @@ def tagesgang(
 TEXTE_TAGESGANG_NETZE = {
     "achse_x": "Uhrzeit",
     "achse_y": "Anteil der Abfahrten mehr als 3½ Minuten zu spät",
-    "hvz": "Hauptverkehrszeit",
+    "hvz": "Rush Hour",
     "mittel": "Tagesmittel {wert} %",
-    "gipfel": "{stunde} Uhr — {wert} %",
+    "gipfel": "{stunde} Uhr {wert} %",
 }
 
 # Die schattierten Baender. Kein amtlicher Begriff, sondern die Zeiten, in denen
@@ -1098,37 +1139,46 @@ def tagesgang_netze_anteile(es, nur_werktage: bool = True) -> pd.DataFrame:
 
 def tagesgang_netzvergleich(werte: pd.DataFrame,
                             spalte: str = "zu spät ≥240s (%)") -> go.Figure:
-    """Anteil verspaeteter Abfahrten je Stunde, Tram ueber U-Bahn.
+    """Anteil verspaeteter Abfahrten je Stunde, beide Netze in EINEM Feld.
 
     `werte` braucht die Spalten `Netz`, `stunde`, `n` und `spalte` — so wie
     scripts/grafik_tagesgang_netze.py sie erzeugt.
+
+    ── Ein Feld, nicht zwei ────────────────────────────────────────────────
+
+    Bis zum 19.08.2026 lagen die Netze in zwei gestapelten Feldern mit je
+    eigener Skala. Das war ein Fehler: Die U-Bahn-Kurve reichte dort ebenso
+    hoch wie die Tram-Kurve, obwohl sie sich auf 4,1 statt 9,9 Prozent bezog.
+    Wer die Achsenbeschriftung nicht las, sah zwei gleich schlimme Netze.
+
+    Auf gemeinsamer Achse ist der Abstand zwischen den Kurven die Aussage.
+    Dass der eigene Gipfel der U-Bahn um 16 Uhr liegt, bleibt trotzdem
+    ablesbar, weil er als Punkt und Zahl beschriftet ist.
     """
-    from plotly.subplots import make_subplots
-
     netze = ["Tram", "U-Bahn"]
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                        vertical_spacing=0.11)
+    fig = go.Figure()
 
-    for zeile, netz in enumerate(netze, start=1):
+    # Gemeinsame Skala fuer beide Netze — sonst waere der Vergleich hinfaellig.
+    hoechster = werte[spalte].max()
+
+    for von, bis in HVZ_BAENDER:
+        fig.add_shape(type="rect", x0=von, x1=bis, y0=0, y1=1,
+                      yref="y domain", fillcolor="#ECEFF1", line_width=0,
+                      layer="below")
+
+    for i, netz in enumerate(netze):
         t = werte[werte["Netz"] == netz].copy()
         t["x"] = t["stunde"].where(t["stunde"] >= TAGESBEGINN,
                                    t["stunde"] + 24)
         t = t.sort_values("x")
         farbe = FARBE_NETZ[netz]
-        hoechster = t[spalte].max()
-        achse = "" if zeile == 1 else str(zeile)
-
-        for von, bis in HVZ_BAENDER:
-            fig.add_shape(type="rect", x0=von, x1=bis, y0=0, y1=1,
-                          xref=f"x{achse}", yref=f"y{achse} domain",
-                          fillcolor="#ECEFF1", line_width=0, layer="below")
 
         fig.add_trace(go.Scatter(
-            x=t["x"], y=t[spalte], mode="lines",
+            x=t["x"], y=t[spalte], mode="lines", name=netz,
             line=dict(color=farbe, width=3.5), showlegend=False,
             customdata=t["stunde"],
-            hovertemplate="%{customdata} Uhr: %{y:.2f} %<extra></extra>",
-        ), row=zeile, col=1)
+            hovertemplate=netz + ", %{customdata} Uhr: %{y:.2f} %<extra></extra>",
+        ))
 
         # Der Gipfel ist die Aussage — er bekommt einen Punkt und seine Zahl.
         gipfel = t.loc[t[spalte].idxmax()]
@@ -1136,45 +1186,48 @@ def tagesgang_netzvergleich(werte: pd.DataFrame,
             x=[gipfel["x"]], y=[gipfel[spalte]], mode="markers",
             marker=dict(color=farbe, size=16, line=dict(color="white", width=3)),
             showlegend=False, hoverinfo="skip",
-        ), row=zeile, col=1)
+        ))
         fig.add_annotation(
-            x=gipfel["x"], y=gipfel[spalte], row=zeile, col=1,
+            x=gipfel["x"], y=gipfel[spalte],
             text="<b>" + TEXTE_TAGESGANG_NETZE["gipfel"].format(
                 stunde=int(gipfel["stunde"]), wert=_de(gipfel[spalte])) + "</b>",
             showarrow=False, yshift=32, xanchor="center",
             font=dict(size=18, color=farbe))
 
-        # Netzname und Tagesmittel links oben im Feld, statt eines Feldtitels.
+        # Netzname und Tagesmittel rechts oben, statt einer Legende — so steht
+        # die Farbzuordnung direkt neben der Zahl, die sie erklaert. Rechts
+        # deshalb, weil dort weder eine Kurve noch eine Gipfelbeschriftung
+        # hinreicht; links stiess der Block an das erste Rush-Hour-Band.
         mittel = (t[spalte] * t["n"]).sum() / t["n"].sum()
         fig.add_annotation(
-            x=0.005, y=1.0, xref=f"x{achse} domain", yref=f"y{achse} domain",
-            xanchor="left", yanchor="top", showarrow=False,
+            x=0.995, y=1.0, xref="x domain", yref="y domain",
+            yshift=-i * 36, xanchor="right", yanchor="top", showarrow=False,
             text=(f"<b>{netz}</b>   <span style='color:#90A4AE'>"
                   + TEXTE_TAGESGANG_NETZE["mittel"].format(wert=_de(mittel))
                   + "</span>"),
             font=dict(size=21, color=farbe))
 
-        fig.update_yaxes(range=[0, hoechster * 1.35], gridcolor="#ECEFF1",
-                         zeroline=False, ticksuffix=" %", row=zeile, col=1)
-
-    # Die Baender einmal benennen — im oberen Feld, wo Platz ist.
-    von, bis = HVZ_BAENDER[0]
-    fig.add_annotation(
-        x=(von + bis) / 2, y=1.0, xref="x", yref="y domain",
-        yanchor="bottom", yshift=8, showarrow=False,
-        text=TEXTE_TAGESGANG_NETZE["hvz"],
-        font=dict(size=16, color="#90A4AE"))
+    # Beide Baender beschriften, nicht nur das erste. Ein unbeschriftetes
+    # zweites Band wird sonst fuer etwas anderes gehalten als das erste.
+    for von, bis in HVZ_BAENDER:
+        fig.add_annotation(
+            x=(von + bis) / 2, y=1.0, xref="x", yref="y domain",
+            yanchor="bottom", yshift=8, showarrow=False,
+            text=TEXTE_TAGESGANG_NETZE["hvz"],
+            font=dict(size=16, color="#90A4AE"))
 
     # Betriebstag statt Kalendertag: 4 Uhr bis 3 Uhr. Sonst steht der
     # Nachtverkehr als Gipfel am linken Bildrand und konkurriert optisch mit dem
     # Abendgipfel, obwohl er derselbe Betriebsabend ist.
     stellen = list(range(TAGESBEGINN, TAGESBEGINN + 24, 2))
     beschriftung = [f"{s % 24} h" for s in stellen]
-    for zeile in (1, 2):
-        fig.update_xaxes(range=[TAGESBEGINN - 0.5, TAGESBEGINN + 23.5],
-                         tickvals=stellen, ticktext=beschriftung,
-                         showgrid=False, zeroline=False, row=zeile, col=1)
-    fig.update_xaxes(title=TEXTE_TAGESGANG_NETZE["achse_x"], row=2, col=1)
+    fig.update_xaxes(title=TEXTE_TAGESGANG_NETZE["achse_x"],
+                     range=[TAGESBEGINN - 0.5, TAGESBEGINN + 23.5],
+                     tickvals=stellen, ticktext=beschriftung,
+                     showgrid=False, zeroline=False)
+    fig.update_yaxes(title=TEXTE_TAGESGANG_NETZE["achse_y"],
+                     range=[0, hoechster * 1.35], gridcolor="#ECEFF1",
+                     zeroline=False, ticksuffix=" %")
     fig.update_layout(plot_bgcolor="white", height=560)
     return fig
 
@@ -1323,3 +1376,410 @@ def lsa_balken(werte: pd.DataFrame, spalte: str = "zu spät (%)") -> go.Figure:
         plot_bgcolor="white", height=520,
     )
     return fig
+
+
+
+# ── Die Obergrenze: was Verspaetungsbekaempfung hoechstens bringen kann ──────
+#
+# Zu Szene 7 des Films: „Selbst wenn ab morgen keine einzige Tram mehr zu spaet
+# kaeme, stiege die Quote auf 89,6 Prozent. Vertraglich geschuldet sind 92,3."
+#
+# Die Grafik ist der Monatswertegrafik der Senatsverwaltung nachgebaut
+# (video/bild/Monatswerte pünktlichkeit.png), aber vollstaendig aus der eigenen
+# Erhebung gerechnet — eine Quelle, eine Schwelle, kein Umrechnungsfaktor.
+# Gezeichnet werden drei Groeszen:
+#
+#     ist                so puenktlich war die Tram (Fenster ]-120, +240[)
+#     ohne_verspaetung   was uebrig bliebe, wenn ALLE zu spaeten Abfahrten
+#                        verschwaenden — also 100 minus Verfruehungsanteil
+#     sollwert           Jahressollwert Straszenbahn aus data/bvg/, 92,3 %
+#
+# Die Flaeche zwischen der zweiten Linie und dem Sollwert ist der Bildinhalt.
+# Sie bleibt in jedem Monat offen.
+#
+# ── DRAMATURGIE: DIE RESTGROESSE WIRD NICHT BENANNT ─────────────────────────
+#
+# Was uebrig bleibt, sind die verfruehten Abfahrten. Das Wort darf in dieser
+# Grafik NICHT vorkommen: Die Verfruehung ist die Aufloesung von Szene 8, und
+# Szene 7 laeuft davor. Dieselbe Regel gilt fuer die geteilte Richtungsgrafik
+# und fuer lsa_zu_spaet.png. Die Linie heiszt deshalb „wenn keine Fahrt mehr zu
+# spaet waere" — sie zeigt eine Luecke, ohne sie zu benennen. Wer die
+# Beschriftung auf „Verfruehung" aendert, nimmt die naechste Szene vorweg.
+#
+# ── WARUM NICHT DIE AMTLICHE REIHE ──────────────────────────────────────────
+#
+# Eine erste Fassung zeichnete die amtliche Monatsreihe (Jan 25 bis Jun 26) und
+# rechnete die zweite Linie ueber das Verhaeltnis der beiden
+# Verfruehungsmessungen hoch, Faktor rund 3,4. **Verworfen.** Rechnet man nach,
+# wieviel zu spaete Fahrten der geschaetzten Linie noch bleiben, kommt in 12
+# von 18 Monaten weniger als 3 % heraus, im Februar und August 2025 ein
+# NEGATIVER Wert — die Hypothesenlinie laege dort unter der tatsaechlichen.
+# Verspaetungen zu beseitigen kann die Puenktlichkeit aber nicht senken.
+#
+# Der Grund steht in DATASET.md unter *Known Data Characteristics*: Bei der
+# Verfruehung sind sich die beiden Quellen uneinig wie bei keiner anderen
+# Kennzahl — amtlich rund 3 % der Fahrten, hier rund 10 %. Das Verhaeltnis ist
+# keine Umrechnungskonstante, sondern der Widerspruch selbst.
+#
+# ── ZWEI EINSCHRAENKUNGEN, DIE IN DEN SPRECHTEXT GEHOEREN ───────────────────
+#
+# 1. Der Sollwert gilt JE FAHRT, diese Erhebung misst JE ABFAHRT AN EINEM HALT.
+#    Beides nebeneinanderzustellen ist genau das, wovor validierung_bvg.py
+#    warnt. Belastbar ist es nur, weil dort geprueft wurde, dass die Messung je
+#    Halt den amtlichen Wert am besten trifft — der Rest-Abstand betraegt bei
+#    der Tram -2,4 bis -3,3 Prozentpunkte, und er geht in die falsche Richtung:
+#    Die eigene Messung liegt TIEFER. Rechnet man ihn auf die Hypothesenlinie
+#    auf, landet sie bei rund 92,3 % und damit auf dem Sollwert.
+#    **Die Luecke ist also nicht groeszer als der bekannte Instrumentenversatz.**
+#    Der Satz „ueber die Verspaetung allein ist es nicht erreichbar" bleibt
+#    richtig — „knapp verfehlt" waere er nicht.
+#
+# 2. Die Verfruehungsschwelle ist mit -120 s strenger als die amtliche (-60 s).
+#    Sie kann den Verfruehungsanteil deshalb nur unterschaetzen, nie
+#    uebertreiben — die Luecke ist in dieser Richtung konservativ.
+
+FARBE_SOLL = "#37474F"      # Sollwertlinie: Struktur, keine Kategorie
+FARBE_LUECKE = "#ECEFF1"    # die Flaeche, die auch dann noch fehlt
+# Erreichter Sollwert. Keine neue Farbe: derselbe Gruenton wie FARBE_LSA
+# ["aktiv"] (#4CAF50), nur als lasierende Flaeche. Wer das Gruen aendert,
+# aendert es dort.
+FARBE_ERREICHT = "rgba(76, 175, 80, 0.20)"
+
+# Kopfzeile im Aufbau der Senatsgrafik: rote Marke, Titel, Unterzeile.
+#
+# ZWEI ABWEICHUNGEN VOM AMTLICHEN WORTLAUT, beide bewusst:
+#
+# 1. „erbrachten ABFAHRTEN" statt „erbrachten Fahrten". Der Monitor zaehlt
+#    Fahrten, diese Erhebung Abfahrtsereignisse an einer Haltestelle. Den
+#    amtlichen Wortlaut zu uebernehmen hiesze, genau die Verwechslung zu
+#    behaupten, vor der scripts/validierung_bvg.py warnt.
+# 2. „60 Sekunden vor und 210 Sekunden nach" ist woertlich uebernommen, obwohl
+#    auf ]-120 s, +240 s[ gefiltert wird. Das ist die Vertragsregel im
+#    Minutenraster — dieselbe Entscheidung wie bei VERTRAGSTEXT und der
+#    geteilten Richtungsgrafik. Stuende hier der Rasterwert, hielte der
+#    Zuschauer eine der beiden Zahlen fuer falsch.
+TEXTE_OHNE_VERSPAETUNG = {
+    "titel": "Pünktlichkeit der Tram in meinem Messzeitraum",
+    "untertitel": ("Anteil der erbrachten Abfahrten, die innerhalb des Zeitfensters "
+                   "von 60 Sekunden vor und 210 Sekunden nach fahrplanmäßiger "
+                   "Abfahrtszeit durchgeführt wurden."),
+    "ist": "Gemessene Pünktlichkeit",
+    "hypothese": "Pünktlichkeit, wenn keine<br>Fahrt verspätet wäre",
+    "soll": "Jahressollwert<br>Straßenbahn: {wert} %",
+    # Kurz halten: Die Flaeche ist im Bild nur gut zwei Punkte hoch. „⌀" meint
+    # das MENGENGEWICHTETE Mittel ueber alle Monate — nicht den besten Monat,
+    # der lag bei 2,4. Und „pp", nicht „%": Der Abstand zweier Prozentwerte
+    # sind Prozentpunkte.
+    "luecke": "⌀ {wert} pp",
+}
+
+
+# Die Schwestergrafik zu Szene 8/9: dieselbe Reihe, aber die andere Richtung
+# weggedacht. Hier DARF die Verfruehung benannt werden — sie ist zu diesem
+# Zeitpunkt des Films bereits aufgeloest. In der Verspaetungsfassung darf sie es
+# nicht, siehe oben.
+#
+# Beide Grafiken benutzen DIESELBE y-Achse (bis 100 %), damit sie im Schnitt
+# uebereinandergelegt werden koennen. Wer eine der beiden skaliert, muss die
+# andere mitziehen — sonst sieht die eine Hypothese hoeher aus als die andere,
+# obwohl sie es nicht ist.
+TEXTE_OHNE_VERFRUEHUNG = {
+    "titel": TEXTE_OHNE_VERSPAETUNG["titel"],
+    "untertitel": TEXTE_OHNE_VERSPAETUNG["untertitel"],
+    "ist": TEXTE_OHNE_VERSPAETUNG["ist"],
+    "hypothese": "Pünktlichkeit, wenn keine<br>Fahrt zu früh wäre",
+    "soll": TEXTE_OHNE_VERSPAETUNG["soll"],
+    "luecke": "Ziel erreicht<br>in {treffer} von {gesamt} Monaten",
+}
+
+
+# Die dritte Fassung — und die einzige, die nichts Unmoegliches annimmt.
+#
+# „Keine Fahrt mehr zu frueh" ist ein Grenzwert, kein Ziel: Kein Netz der Welt
+# faehrt null Verfruehung. Diese Grafik setzt deshalb an ihre Stelle das
+# Niveau, das die Berliner U-Bahn im GLEICHEN Zeitraum nachweislich schon
+# faehrt — rund ein Prozent gegen rund zehn bei der Tram. Das ist keine
+# Modellannahme, sondern eine Messung aus demselben Datensatz.
+#
+# Was dabei ausdruecklich NICHT mit angenommen wird: dass die Verspaetung
+# besser wird. Sie bleibt Monat fuer Monat auf ihrem gemessenen Wert stehen.
+# Die Linie zeigt also, was allein die Abfahrtsdisziplin an der Haltestelle
+# hergibt — der Teil, fuer den kein Meter Gleis gebaut werden muss.
+#
+# Die Zahl im Bild ist deshalb belastbarer als die der Verfruehungsfassung,
+# und sie liegt zwangslaeufig darunter: genau um die Verfruehung der U-Bahn.
+TEXTE_ABFAHRTSDISZIPLIN = {
+    "titel": TEXTE_OHNE_VERSPAETUNG["titel"],
+    "untertitel": TEXTE_OHNE_VERSPAETUNG["untertitel"],
+    "ist": TEXTE_OHNE_VERSPAETUNG["ist"],
+    "hypothese": "Pünktlichkeit mit der<br>Abfahrtsdisziplin der U-Bahn",
+    "soll": TEXTE_OHNE_VERSPAETUNG["soll"],
+    "luecke": "Ziel erreicht<br>in {treffer} von {gesamt} Monaten",
+}
+
+
+def ohne_verspaetung_reihe(es, index: str,
+                           monate: list[tuple[str, str, str]],
+                           index_vergleich: str | None = None) -> pd.DataFrame:
+    """Je Monat: gemessene Puenktlichkeit und die Quote ohne jede Verspaetung.
+
+    `monate` ist eine Liste (Beschriftung, von, bis) mit `bis` exklusiv — die
+    Grenzen klammern den Collector-Ausfall aus, statt ihn zu filtern.
+
+    Ist `index_vergleich` gesetzt (die U-Bahn), kommen zwei Spalten dazu:
+    `verfrueht_vergleich` — deren Verfruehungsanteil im selben Monat — und
+    `wie_vergleich`, die Puenktlichkeit der Tram, wenn ihre Verfruehung auf
+    genau dieses Niveau saenke. Das ist die realistische Fassung der
+    Hypothese: nicht null Verfruehung, sondern die, die ein anderes Netz im
+    selben Zeitraum nachweislich schon faehrt.
+
+    Gerechnet wird ueber `eigene_werte()` aus scripts/validierung_bvg.py, damit
+    Grafik, Notebook und die Konsolenausgabe der Validierung dieselbe Abfrage
+    benutzen und nicht auseinanderlaufen koennen.
+
+    Liegt hier und nicht im Skript, damit Notebook 05 und
+    scripts/grafik_ohne_verspaetung.py dieselbe Rechnung benutzen.
+    """
+    # scripts/ liegt nicht im Pfad, wenn der Aufruf aus einem Notebook kommt.
+    import sys
+    from pathlib import Path as _Pfad
+    skripte = str(_Pfad(__file__).resolve().parents[2] / "scripts")
+    if skripte not in sys.path:
+        sys.path.insert(0, skripte)
+    from validierung_bvg import eigene_werte
+
+    zeilen = []
+    for name, von, bis in monate:
+        w = eigene_werte(es, index, von, bis)
+        if not w:
+            continue
+        spaet = w["Verfrühungsvermeidung"] - w["Pünktlichkeit"]
+        zeile = {
+            "Monat": name,
+            "ist": w["Pünktlichkeit"],
+            # Keine zu spaete Abfahrt mehr: uebrig bleibt der Verfruehungsanteil.
+            "ohne_verspaetung": w["Verfrühungsvermeidung"],
+            # Keine zu fruehe Abfahrt mehr: uebrig bleibt der Verspaetungsanteil.
+            "ohne_verfruehung": 100 - spaet,
+            "zu_frueh": 100 - w["Verfrühungsvermeidung"],
+            "zu_spaet": spaet,
+            "n": w["_n"],
+        }
+        if index_vergleich:
+            v = eigene_werte(es, index_vergleich, von, bis)
+            frueh_v = 100 - v["Verfrühungsvermeidung"]
+            zeile["verfrueht_vergleich"] = frueh_v
+            # 100 minus Verspaetung minus fremde Verfruehung. Die Verspaetung
+            # der Tram bleibt unangetastet — die Annahme lautet ausdruecklich
+            # NICHT, dass mit der Disziplin auch die Verspaetung verschwindet.
+            zeile["wie_vergleich"] = 100 - spaet - frueh_v
+            zeile["n_vergleich"] = v["_n"]
+        zeilen.append(zeile)
+    return pd.DataFrame(zeilen)
+
+
+def _bandstuecke(x: list[float], y: list[float], schwelle: float,
+                 ueber: bool) -> list[tuple[list[float], list[float]]]:
+    """Zerlegt einen Polygonzug in die Stuecke ober- bzw. unterhalb `schwelle`.
+
+    Gibt Listen von (x, y) zurueck, jeweils mit den Schnittpunkten als
+    Randpunkten. Damit laesst sich die Flaeche zur Schwelle in zwei Farben
+    fuellen, ohne dass an der Kreuzung ein Zipfel in der falschen Farbe stehen
+    bleibt — beim Juni geht es um 0,09 Punkte, das waeren wenige Pixel.
+    """
+    def drin(wert: float) -> bool:
+        return wert >= schwelle if ueber else wert <= schwelle
+
+    stuecke, sx, sy = [], [], []
+    for i, (xi, yi) in enumerate(zip(x, y)):
+        if drin(yi):
+            if not sx and i > 0:            # Eintritt: Schnittpunkt davor
+                t = (schwelle - y[i - 1]) / (yi - y[i - 1])
+                sx.append(x[i - 1] + t * (xi - x[i - 1]))
+                sy.append(schwelle)
+            sx.append(xi)
+            sy.append(yi)
+        else:
+            if sx:                          # Austritt: Schnittpunkt dahinter
+                t = (schwelle - y[i - 1]) / (yi - y[i - 1])
+                sx.append(x[i - 1] + t * (xi - x[i - 1]))
+                sy.append(schwelle)
+                stuecke.append((sx, sy))
+                sx, sy = [], []
+    if sx:
+        stuecke.append((sx, sy))
+    return [(a, b) for a, b in stuecke if len(a) > 1]
+
+
+def _monatsreihe_hypothese(werte: pd.DataFrame, sollwert: float, spalte: str,
+                           texte: dict, luecketext: str, text_versatz: float,
+                           gruen_ueber_soll: bool = False,
+                           versatz_hypothese_px: int = 0,
+                           versatz_soll_px: int = 0) -> go.Figure:
+    """Gemeinsamer Zeichner beider Hypothesengrafiken.
+
+    `spalte` ist die Hypothesenreihe (`ohne_verspaetung` oder
+    `ohne_verfruehung`), `texte` der zugehoerige TEXTE_-Block, `luecketext` die
+    schon gefuellte Beschriftung der Flaeche und `text_versatz` ihre Lage in
+    Prozentpunkten gegenueber der Bandmitte — die Verfruehungsfassung braucht
+    sie ueber dem Band, weil das Band dort nur gut zwei Punkte hoch ist.
+
+    Aufbau wie die Monatswertegrafik der Senatsverwaltung: Kopfzeile mit roter
+    Marke, Titel und Unterzeile; links nur die Prozentwerte ohne Achstitel;
+    unten die Monate; die Linien rechts am Bildrand beschriftet.
+    """
+    # Numerische x-Achse statt Kategorien: Nur so lassen sich Schnittpunkte
+    # ZWISCHEN zwei Monaten zeichnen. Die Monatsnamen kommen als ticktext.
+    x = list(range(len(werte)))
+    hypo = list(werte[spalte])
+    fig = go.Figure()
+
+    # Die Luecke zuerst, damit die Linien darueber liegen.
+    # `mode="lines"` ist Pflicht: Ohne die Angabe setzt Plotly bei wenigen
+    # Punkten von sich aus "lines+markers" und tupft blaue Punkte auf den Rand
+    # der Flaeche — auf der Sollwertlinie sieht das wie Messwerte aus.
+    for stuecke, farbe in ((_bandstuecke(x, hypo, sollwert, ueber=False),
+                           FARBE_LUECKE),
+                          (_bandstuecke(x, hypo, sollwert, ueber=True),
+                           FARBE_ERREICHT if gruen_ueber_soll else FARBE_LUECKE)):
+        for sx, sy in stuecke:
+            fig.add_trace(go.Scatter(
+                x=sx + sx[::-1], y=sy + [sollwert] * len(sx), mode="lines",
+                fill="toself", fillcolor=farbe, line_width=0,
+                hoverinfo="skip", showlegend=False))
+
+    fig.add_trace(go.Scatter(
+        x=x, y=[sollwert] * len(x), mode="lines", showlegend=False,
+        line=dict(color=FARBE_SOLL, width=2.5, dash="dot"),
+        hovertemplate="Sollwert %{y:.2f} %<extra></extra>"))
+
+    # Gestrichelt: eine Rechnung, keine Messung.
+    fig.add_trace(go.Scatter(
+        x=x, y=hypo, mode="lines+markers", showlegend=False,
+        line=dict(color=FARBE_NETZ["Tram"], width=3.5, dash="dash"),
+        marker=dict(color=FARBE_NETZ["Tram"], size=13,
+                    line=dict(color="white", width=3)),
+        # Neutral formuliert: dieselbe Funktion zeichnet drei verschiedene
+        # Hypothesen, „ohne Verspätung" waere bei zweien davon schlicht falsch.
+        hovertemplate="gerechnet %{y:.2f} %<extra></extra>"))
+
+    fig.add_trace(go.Scatter(
+        x=x, y=list(werte["ist"]), mode="lines+markers", showlegend=False,
+        line=dict(color=FARBE_NETZ["Tram"], width=3.5),
+        marker=dict(color=FARBE_NETZ["Tram"], size=13,
+                    line=dict(color="white", width=3)),
+        hovertemplate="gemessen %{y:.2f} %<extra></extra>"))
+
+    # Die Beschriftungen sitzen auf der Hoehe ihrer Linie. Wo Hypothese und
+    # Sollwert dicht beieinander enden — bei der Disziplinfassung sind es
+    # 0,6 Punkte —, reicht das nicht: zwei zweizeilige Beschriftungen brauchen
+    # mehr Platz, als die Linien voneinander haben. Der Versatz in PIXELN, nicht
+    # in Prozentpunkten, weil es um Schrifthoehen geht und nicht um Datenwerte.
+    letzte = werte.iloc[-1]
+    for y, text, farbe, versatz in [
+        (letzte["ist"], texte["ist"], FARBE_NETZ["Tram"], 0),
+        (letzte[spalte], texte["hypothese"], FARBE_NETZ["Tram"],
+         versatz_hypothese_px),
+        (sollwert, texte["soll"].format(wert=_de(sollwert)), FARBE_SOLL,
+         versatz_soll_px),
+    ]:
+        fig.add_annotation(x=1.015, y=y, xref="x domain", yref="y",
+                           xanchor="left", yanchor="middle", showarrow=False,
+                           yshift=versatz,
+                           text=text, font=dict(size=17, color=farbe),
+                           align="left")
+
+    # Die Zahl steht im BESTEN Monat der Hypothese, nicht im schlechtesten —
+    # dort ist die Aussage am schwersten angreifbar.
+    bester = werte[spalte].idxmax()
+    fig.add_annotation(
+        x=int(werte.index.get_loc(bester)),
+        y=(sollwert + werte.loc[bester, spalte]) / 2 + text_versatz,
+        showarrow=False, xanchor="left", xshift=14, align="left",
+        text="<b>" + luecketext + "</b>",
+        font=dict(size=17, color=FARBE_SOLL))
+
+    # Kopfzeile im Aufbau der Senatsgrafik: rote Marke, Titel, Unterzeile.
+    fig.add_shape(type="rect", xref="paper", yref="paper",
+                  x0=-0.052, x1=-0.046, y0=1.055, y1=1.135,
+                  fillcolor=FARBE_NETZ["Tram"], line_width=0)
+    fig.add_annotation(x=-0.038, y=1.135, xref="paper", yref="paper",
+                       xanchor="left", yanchor="top", showarrow=False,
+                       text="<b>" + texte["titel"] + "</b>",
+                       font=dict(size=25, color="#263238"))
+    fig.add_annotation(x=-0.038, y=1.075, xref="paper", yref="paper",
+                       xanchor="left", yanchor="top", showarrow=False,
+                       text=texte["untertitel"],
+                       font=dict(size=15, color="#455A64"))
+
+    tiefste = float(werte["ist"].min())
+    fig.update_xaxes(showgrid=False, zeroline=False,
+                     tickvals=x, ticktext=list(werte["Monat"]),
+                     range=[-0.06, len(werte) - 0.94])
+    # Bis 100 %, nicht bis knapp ueber den Sollwert: Der Abstand nach oben ist
+    # Teil der Aussage — sonst sieht der Sollwert wie das Maximum aus. Beide
+    # Hypothesengrafiken teilen sich diese Achse und sind dadurch im Schnitt
+    # uebereinanderlegbar.
+    # Kein Achstitel: links stehen nur die Prozentwerte, wie in der Vorlage.
+    fig.update_yaxes(range=[tiefste - 1.5, 100], dtick=2,
+                     gridcolor="#ECEFF1", zeroline=False, ticksuffix=" %")
+    fig.update_layout(plot_bgcolor="white", height=560)
+    return fig
+
+
+def ohne_verspaetung(werte: pd.DataFrame, sollwert: float) -> go.Figure:
+    """Szene 7: Puenktlichkeit, wenn keine Abfahrt mehr zu spaet waere.
+
+    Die Luecke bleibt offen — beschriftet wird sie im besten Monat.
+    """
+    gewicht = werte["n"] / werte["n"].sum()
+    mittel = float((werte["ohne_verspaetung"] * gewicht).sum())
+    return _monatsreihe_hypothese(
+        werte, sollwert, "ohne_verspaetung", TEXTE_OHNE_VERSPAETUNG,
+        TEXTE_OHNE_VERSPAETUNG["luecke"].format(wert=_de(sollwert - mittel)),
+        text_versatz=0.0)
+
+
+def ohne_verfruehung(werte: pd.DataFrame, sollwert: float) -> go.Figure:
+    """Szene 8/9: Puenktlichkeit, wenn keine Abfahrt mehr zu frueh waere.
+
+    Hier liegt die Hypothesenlinie UEBER dem Sollwert, das Band ist also kein
+    Fehlbetrag, sondern ein Ueberschuss — und mit gut zwei Punkten so schmal,
+    dass die Beschriftung darueber steht statt darin (`text_versatz`).
+
+    Beschriftet wird, in wievielen Monaten das Ziel erreicht waere. Eine
+    einzelne Zahl waere hier irrefuehrend: Drei der vier Monate liegen darueber,
+    der Juni mit 92,21 gegen 92,30 % knapp darunter.
+    """
+    treffer = int((werte["ohne_verfruehung"] >= sollwert).sum())
+    return _monatsreihe_hypothese(
+        werte, sollwert, "ohne_verfruehung", TEXTE_OHNE_VERFRUEHUNG,
+        TEXTE_OHNE_VERFRUEHUNG["luecke"].format(treffer=treffer,
+                                                gesamt=len(werte)),
+        text_versatz=2.6, gruen_ueber_soll=True)
+
+
+def abfahrtsdisziplin(werte: pd.DataFrame, sollwert: float,
+                      text_versatz: float = 2.0) -> go.Figure:
+    """Szene 9b: Puenktlichkeit bei der Abfahrtsdisziplin der U-Bahn.
+
+    Braucht die Spalte `wie_vergleich` — also einen Aufruf von
+    `ohne_verspaetung_reihe()` mit `index_vergleich`.
+
+    Dritte und letzte Fassung derselben Grafik, damit sie sich im Schnitt
+    uebereinanderlegen lassen: gleiche Achse, gleiche Kopfzeile, gleiche
+    Farben. Nur die gestrichelte Linie liegt jeweils anders:
+
+        ohne_verspaetung   Verspaetung = 0   unerreichbar, bleibt unter dem Ziel
+        ohne_verfruehung   Verfruehung = 0   unerreichbar, ueber dem Ziel
+        abfahrtsdisziplin  Verfruehung = U-Bahn-Niveau, Verspaetung unveraendert
+
+    Die dritte ist die einzige, deren Annahme irgendwo schon eingeloest wird.
+    """
+    treffer = int((werte["wie_vergleich"] >= sollwert).sum())
+    return _monatsreihe_hypothese(
+        werte, sollwert, "wie_vergleich", TEXTE_ABFAHRTSDISZIPLIN,
+        TEXTE_ABFAHRTSDISZIPLIN["luecke"].format(treffer=treffer,
+                                                 gesamt=len(werte)),
+        text_versatz=text_versatz, gruen_ueber_soll=True,
+        versatz_hypothese_px=52, versatz_soll_px=-26)

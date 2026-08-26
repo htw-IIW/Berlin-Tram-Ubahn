@@ -40,18 +40,34 @@ from export_grafiken import BREITE, HOEHE                      # noqa: E402
 INDIZES = {"tram": "tram-departures-v2", "ubahn": "ubahn-departures-v2"}
 STANDARDZIEL = WURZEL / "video" / "bild" / "tagesgang_frueh_spaet.png"
 
+# Gerechnet wird am Projektfenster (−120 s / +240 s), beschriftet wird mit dem
+# amtlichen (−60 s / +210 s). Das ist kein Widerspruch, sondern eine Folge der
+# Minutenquantisierung von `delay_s` (siehe DATASET.md): Es gibt nur Vielfache
+# von 60 s. „Mehr als eine Minute zu früh" heißt in diesen Daten deshalb genau
+# `delay_s <= -120`, denn -60 ist exakt eine Minute und noch im Fenster. Und
+# „mehr als dreieinhalb Minuten zu spät" heißt `delay_s >= 240`, weil zwischen
+# 210 und 240 kein Wert liegt.
+#
+# Ein Lauf mit --frueh 60 zählt deshalb die exakt eine Minute verfrühten
+# Abfahrten mit und kommt auf 27 % statt 16 % um 19 Uhr — dieselbe Aussage,
+# anderer Zaehlbereich, und nicht das, was der Sprechtext behauptet.
+FENSTER_FRUEH_S = abs(VERFRUEHT_SCHWELLE_S)
+FENSTER_SPAET_S = VERSPAETET_SCHWELLE_S
+
 
 def main() -> int:
     p = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--frueh", type=int, default=abs(VERFRUEHT_SCHWELLE_S),
-                   help=f"Verfrühung ab … Sekunden "
-                        f"(Vorgabe: {abs(VERFRUEHT_SCHWELLE_S)})")
-    p.add_argument("--spaet", type=int, default=VERSPAETET_SCHWELLE_S,
-                   help=f"Verspätung ab … Sekunden "
-                        f"(Vorgabe: {VERSPAETET_SCHWELLE_S})")
+    p.add_argument("--frueh", type=int, default=FENSTER_FRUEH_S,
+                   help=f"Verfrühung ab … Sekunden (Vorgabe: {FENSTER_FRUEH_S}, "
+                        f"Projektfenster: {abs(VERFRUEHT_SCHWELLE_S)})")
+    p.add_argument("--spaet", type=int, default=FENSTER_SPAET_S,
+                   help=f"Verspätung ab … Sekunden (Vorgabe: {FENSTER_SPAET_S}, "
+                        f"Projektfenster: {VERSPAETET_SCHWELLE_S})")
     p.add_argument("--netz", choices=["tram", "ubahn"], default="tram")
+    p.add_argument("--alle-tage", action="store_true",
+                   help="Wochenenden mitrechnen (Vorgabe: nur Werktage)")
     p.add_argument("--ziel", type=Path, default=STANDARDZIEL)
     args = p.parse_args()
 
@@ -59,9 +75,11 @@ def main() -> int:
 
     es = Elasticsearch(ES_HOST, basic_auth=(ES_USER, ES_PASSWORD),
                        request_timeout=300)
-    werte = tagesgang_anteile(es, INDIZES[args.netz], schwelle_frueh, args.spaet)
+    werte = tagesgang_anteile(es, INDIZES[args.netz], schwelle_frueh, args.spaet,
+                              nur_werktage=not args.alle_tage)
 
-    print(f"Fenster ]{schwelle_frueh} s, +{args.spaet} s[ — {args.netz}")
+    tage = "alle Tage" if args.alle_tage else "nur Werktage"
+    print(f"Fenster ]{schwelle_frueh} s, +{args.spaet} s[ — {args.netz}, {tage}")
     print(werte.round(2).to_string(index=False))
 
     for spalte in ("zu früh (%)", "zu spät (%)"):
@@ -70,7 +88,8 @@ def main() -> int:
               f"{werte.loc[i, 'stunde']} Uhr, Minimum "
               f"{werte.loc[j, spalte]:.1f} % um {werte.loc[j, 'stunde']} Uhr")
 
-    fig = tagesgang(werte, schwelle_frueh, args.spaet)
+    fig = tagesgang(werte, schwelle_frueh, args.spaet,
+                    netzname="Tram" if args.netz == "tram" else "U-Bahn")
     args.ziel.parent.mkdir(parents=True, exist_ok=True)
     fuers_video(fig).write_image(str(args.ziel), width=BREITE, height=HOEHE,
                                  scale=1)

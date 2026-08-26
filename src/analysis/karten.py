@@ -27,17 +27,22 @@
 # Gewaehlt ist deshalb ein eigenes divergierendes Paar, geprueft mit dem
 # Validator der dataviz-Vorlage gegen helle Flaeche:
 #
-#     Tuerkis #0097A7 gegen Orange #E65100
-#     Chroma bestanden, Kontrast bestanden,
-#     Abstand unter Protanopie 19,0 — unter Tritanopie 35,2 (Grenze 8)
+#     Lila #7B1FA2 gegen Orange #E65100
+#     Helligkeit, Chroma und Kontrast bestanden,
+#     Abstand unter Protanopie 28,7 — unter Tritanopie 26,2 (Grenze 8)
+#
+# Bis zum 26.08.2026 stand hier Tuerkis #0097A7 statt Lila; die Umstellung war
+# eine Gestaltungsentscheidung der Nutzerin. Das neue Paar ist unter Protanopie
+# klar besser trennbar als das alte (28,7 gegen 19,0), unter Tritanopie etwas
+# schwaecher (26,2 gegen 35,2) — beides weit ueber der Grenze.
 #
 # Die Bedeutung ist auf beiden Karten dieselbe und darf nicht getauscht werden:
 #
-#     TUERKIS = die harmlosere Richtung im Bild (zu frueh / baut Verspaetung ab)
-#     ORANGE  = die Richtung, um die es in der Handlungsempfehlung geht
-#               (zu spaet / erzeugt Verspaetung)
+#     LILA   = die harmlosere Richtung im Bild (zu frueh / baut Verspaetung ab)
+#     ORANGE = die Richtung, um die es in der Handlungsempfehlung geht
+#              (zu spaet / erzeugt Verspaetung)
 
-FARBE_FRUEH = "#0097A7"   # tuerkis — ueberwiegend zu frueh / baut Verspaetung ab
+FARBE_FRUEH = "#7B1FA2"   # lila    — ueberwiegend zu frueh / baut Verspaetung ab
 FARBE_SPAET = "#E65100"   # orange  — ueberwiegend zu spaet / erzeugt Verspaetung
 FARBE_NEUTRAL = "#B0BEC5"  # grau    — Mittelpunkt der divergierenden Skala
 
@@ -48,6 +53,58 @@ FARBE_LSA = {
     "inaktiv":  "#E53935",
     "kein_lsa": "#9E9E9E",
 }
+
+
+# ── Grundkarte ───────────────────────────────────────────────────────────────
+#
+# Bis zum 26.08.2026 lagen alle Karten auf "CartoDB positron". CARTO hat den
+# Rasterdienst basemaps.cartocdn.com inzwischen schluesselpflichtig gemacht und
+# kuendigt ihn ab: Anfragen ohne API-Key bekommen die Kacheln mit einem
+# diagonalen Wasserzeichen "API KEY REQUIRED" quer ueber die Stadt. Der Fehler
+# war im Code nicht zu sehen — die Karten funktionierten weiter, nur die
+# fertigen HTML-Dateien waren fuer die Aufnahme unbrauchbar.
+#
+# Ersatz ist Esris "World Light Gray Canvas": dieselbe zurueckhaltende helle
+# Optik, kein Schluessel, kein Kontingent. Er kommt allerdings in zwei Ebenen,
+# Flaeche und Beschriftung getrennt. Positron hatte beides in einer Kachel;
+# ohne die zweite Ebene stuende die Karte ohne Stadtteilnamen da, und im Video
+# orientiert sich das Publikum genau daran ("Mitte", "Kreuzberg").
+#
+# Die Alternative waere ein CARTO-Schluessel gewesen (kostenlos, 5 Mio. Kacheln
+# im Monat). Dagegen sprach, dass er in einem oeffentlichen Repo aus .env
+# kommen muesste und dass der Dienst ohnehin auslaeuft.
+
+KACHELN_URL = ("https://server.arcgisonline.com/ArcGIS/rest/services/"
+               "Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}")
+KACHELN_SCHRIFT_URL = ("https://server.arcgisonline.com/ArcGIS/rest/services/"
+                       "Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}")
+KACHELN_QUELLE = ("Kartengrundlage: Esri, HERE, Garmin, "
+                  "© OpenStreetMap-Mitwirkende")
+
+# Der Dienst hat Kacheln bis Zoomstufe 16. Ohne diese Grenze laesst Leaflet
+# weiter hineinzoomen und zeigt dann eine leere Flaeche.
+KACHELN_MAX_ZOOM = 16
+
+
+def grundkarte(**kwargs):
+    """Folium-Karte auf der hellgrauen Esri-Grundkarte, Beschriftung obenauf.
+
+    `kwargs` gehen unveraendert an folium.Map (location, zoom_start, ...).
+
+    Beide Kachelebenen sind mit control=False eingehaengt: In der Ebenenauswahl
+    neben der Legende sollen nur die inhaltlichen Gruppen stehen, nicht die
+    Grundkarte. Frueher tauchte dort "cartodbpositron" auf.
+    """
+    import folium
+
+    kwargs.setdefault("max_zoom", KACHELN_MAX_ZOOM)
+    karte = folium.Map(tiles=None, **kwargs)
+    folium.TileLayer(KACHELN_URL, attr=KACHELN_QUELLE, name="Grundkarte",
+                     control=False, max_zoom=KACHELN_MAX_ZOOM).add_to(karte)
+    folium.TileLayer(KACHELN_SCHRIFT_URL, attr=KACHELN_QUELLE,
+                     name="Beschriftung", overlay=True, control=False,
+                     max_zoom=KACHELN_MAX_ZOOM).add_to(karte)
+    return karte
 
 
 def _mische(hex_farbe: str, anteil: float) -> str:
@@ -274,7 +331,8 @@ MIN_ABFAHRTEN = 1_000
 
 def anteile_je_haltestelle(es, index: str, schwelle_frueh_s: int,
                            schwelle_spaet_s: int,
-                           max_haltestellen: int = 2000):
+                           max_haltestellen: int = 2000,
+                           query: dict | None = None):
     """Je Haltestelle: Anteil zu frueher, zu spaeter und ausserhalb liegender
     Abfahrten, dazu Koordinaten, Mittelwert und Fallzahl.
 
@@ -300,6 +358,24 @@ def anteile_je_haltestelle(es, index: str, schwelle_frueh_s: int,
     Szene 4 vorfuehrt: Was von einem Abstand uebrig bleibt, wenn Verfruehung
     ihn nicht mehr mit erzeugen darf.
 
+    ── `query`: standardmaeszig KEIN Filter ─────────────────────────────────
+
+    Ohne `query` laeuft die Aggregation ueber den GANZEN Index — also
+    einschlieszlich Wochenenden, einschlieszlich des Collector-Ausfalls und
+    ohne den Analysezeitraum. Fuer die Karten ist das so gewollt und seit
+    jeher so: Sie zeigen den Bestand, und ihre Kreise haengen an Anteilen, die
+    von der Abtastdichte kaum abhaengen.
+
+    Sobald eine Auswertung neben eine gestellt wird, die tageweise laedt —
+    `lade_fahrten()` und `segmente_gesamtzeitraum()` sieben Wochenenden und
+    den Ausfall aus —, stimmen die Grundgesamtheiten NICHT mehr ueberein. Dann
+    gehoert hier `analysefenster_query()` hinein, bei Bedarf zusammen mit
+    `werktagsfilter()`. Beides steht in quality.py.
+
+    Der Unterschied ist nicht klein: Ueber den Tram-Index verschiebt die volle
+    Regel den Mittelwert einzelner Halte um mehr als zehn Sekunden und
+    veraendert die Rangfolge der obersten zehn.
+
     Gerechnet ohne Script-Aggregation, aus zwei Filter-Teilaggregationen:
     Summe der Ueberschreitungen = n * (Mittelwert der Gefilterten - Schwelle).
     Das ist exakt und kostet nur zwei weitere Teilaggregationen — eine
@@ -310,6 +386,7 @@ def anteile_je_haltestelle(es, index: str, schwelle_frueh_s: int,
 
     antwort = es.search(
         index=index, size=0,
+        **({"query": query} if query else {}),
         aggs={"stops": {
             "terms": {"field": "stop_name", "size": max_haltestellen},
             "aggs": {
@@ -461,8 +538,8 @@ def zuverlaessigkeitskarte(stops, schwelle_frueh_s: int, schwelle_spaet_s: int,
     daten["uebergewicht"] = daten["anteil_spaet"] - daten["anteil_frueh"]
     spanne = daten["uebergewicht"].abs().quantile(0.95) or 1.0
 
-    karte = folium.Map(location=[daten["lat"].mean(), daten["lon"].mean()],
-                       zoom_start=zoom, tiles="CartoDB positron")
+    karte = grundkarte(location=[daten["lat"].mean(), daten["lon"].mean()],
+                       zoom_start=zoom)
     gruppen = {
         "spaet": folium.FeatureGroup(name="überwiegend zu spät", show=True),
         "frueh": folium.FeatureGroup(name="überwiegend zu früh", show=True),
@@ -571,8 +648,7 @@ def netzvergleichskarte(je_netz: dict, schwelle_frueh_s: int,
 
     mitte_lat = sum(m[2].lat for m in marker) / len(marker)
     mitte_lon = sum(m[2].lon for m in marker) / len(marker)
-    karte = folium.Map(location=[mitte_lat, mitte_lon], zoom_start=zoom,
-                       tiles="CartoDB positron")
+    karte = grundkarte(location=[mitte_lat, mitte_lon], zoom_start=zoom)
     gruppen = {netz: folium.FeatureGroup(name=netz, show=True)
                for netz in je_netz}
 
@@ -610,9 +686,132 @@ def netzvergleichskarte(je_netz: dict, schwelle_frueh_s: int,
     return karte
 
 
+def _bahnhofskern(name: str) -> str:
+    """Reduziert einen Haltestellennamen auf den Bahnhof, den er meint.
+
+        `S+U Alexanderplatz Bhf/Gontardstr. (Berlin)` → `Alexanderplatz`
+        `U Naturkundemuseum (Berlin) [Invalidenstr.]` → `Naturkundemuseum`
+
+    Damit fallen die vier Alexanderplatz-Bahnsteige der Tram auf denselben
+    Schluessel wie die U-Bahn-Station.
+    """
+    import re
+    n = re.sub(r"\[.*?\]", "", name).replace("(Berlin)", "").strip()
+    n = re.sub(r"^(S\+U|U)\s+", "", n).split("/")[0].strip().rstrip(",")
+    return re.sub(r"\s+Bhf$", "", n).strip()
+
+
+def gemeinsame_standorte(tram, ubahn, min_abfahrten: int = MIN_ABFAHRTEN):
+    """Orte, an denen beide Netze halten — erkannt am NAMEN, nicht am Abstand.
+
+    Rueckgabe wie `gepaarte_standorte()`: eine Zeile je Ort, mit denselben
+    Spalten, damit `netzvergleichskarte_gepaart()` unveraendert damit zeichnet.
+
+    ── Warum diese Funktion die aeltere abloest ─────────────────────────────
+
+    `gepaarte_standorte()` nimmt zu jeder U-Bahn-Station den naechsten Tramhalt
+    im Umkreis von 300 m. Das erzeugt drei Paare, die keine sind:
+
+        U Unter den Linden  ← Universitaetsstr.            292 m
+        U Turmstr.          ← Luebecker Str.               279 m
+        U Rotes Rathaus     ← Spandauer Str./Marienkirche  231 m
+
+    Das sind Nachbarhaltestellen, keine Umsteigepunkte. An U Turmstr. faehrt im
+    Erhebungszeitraum ueberhaupt keine Tram — die M10 endet an Luebecker Str.,
+    eine Station davor. Wer diese drei mitzaehlt, vergleicht wieder zwei Orte
+    statt einen; genau das soll die Auswahl ja ausschliessen.
+
+    Der Abstand hat einen zweiten, unauffaelligeren Fehler: Er nimmt je Station
+    **einen** Tramhalt. Am Alexanderplatz war das der Bahnsteig Dircksenstr.
+    mit 16.550 Abfahrten — Gontardstr. (81.083) und Memhardstr. (34.567)
+    fielen heraus, obwohl sie derselbe Ort sind. Die Tramseite stand dort also
+    auf einem Achtel der verfuegbaren Abfahrten.
+
+    ── Die Regel ───────────────────────────────────────────────────────────
+
+    Die BVG benennt den Tramhalt am Umsteigepunkt nach der U-Bahn-Station:
+    `U Eberswalder Str.`, `S+U Pankow`, `U Tierpark`. Gezaehlt wird ein Ort
+    deshalb genau dann, wenn ein Tramhalt das Praefix `U ` oder `S+U ` traegt
+    und sein Bahnhofskern zu einer U-Bahn-Station passt. Alle passenden
+    Bahnsteige gehen mengengewichtet in die Tramseite ein.
+
+    Das braucht keinen frei gewaehlten Radius und findet 21 Orte statt 24.
+
+    ── Wo der Trampunkt liegt ──────────────────────────────────────────────
+
+    Beim Ergebnis mehrerer Bahnsteige wird der mengengewichtete Mittelpunkt
+    gezeichnet, nicht einer der Bahnsteige. Der gezeichnete Punkt gehoert dann
+    zu demselben Wert, den der Tooltip nennt — ein einzelner Bahnsteig als Ort
+    wuerde eine Genauigkeit vortaeuschen, die der Mittelwert nicht hat.
+    """
+    import re
+
+    import pandas as pd
+
+    t = tram[tram["count"] >= min_abfahrten]
+    u = ubahn[ubahn["count"] >= min_abfahrten]
+    stationen = {_bahnhofskern(r.stop_name): r for r in u.itertuples()}
+
+    gruppen: dict = {}
+    for halt in t.itertuples():
+        if not re.match(r"^(S\+U|U)\s+", halt.stop_name):
+            continue
+        kern = _bahnhofskern(halt.stop_name)
+        if kern in stationen:
+            gruppen.setdefault(kern, []).append(halt)
+
+    zeilen = []
+    for kern, halte in gruppen.items():
+        station = stationen[kern]
+        n = sum(h.count for h in halte)
+        mittel = lambda feld: sum(  # noqa: E731 — nur hier, mengengewichtet
+            getattr(h, feld) * h.count for h in halte) / n
+        tram_lat, tram_lon = mittel("lat"), mittel("lon")
+        zeilen.append({
+            "station": station.stop_name,
+            "ubahn_pct": station.anteil_ausserhalb,
+            # Bei mehreren Bahnsteigen nennt die Beschriftung ihre Zahl, nicht
+            # eine willkuerlich herausgegriffene Adresse.
+            "tramhalt": (halte[0].stop_name if len(halte) == 1
+                         else f"{kern} ({len(halte)} Tramhalte)"),
+            "tram_pct": mittel("anteil_ausserhalb"),
+            "abstand_m": min(
+                _abstand_m(station.lat, station.lon, h.lat, h.lon)
+                for h in halte),
+            "ubahn_lat": station.lat, "ubahn_lon": station.lon,
+            "ubahn_frueh": station.anteil_frueh,
+            "ubahn_spaet": station.anteil_spaet,
+            "ubahn_n": int(station.count),
+            "tram_lat": tram_lat, "tram_lon": tram_lon,
+            "tram_frueh": mittel("anteil_frueh"),
+            "tram_spaet": mittel("anteil_spaet"),
+            "tram_n": int(n),
+        })
+
+    df = pd.DataFrame(zeilen)
+    if not df.empty:
+        df["differenz_pp"] = df["tram_pct"] - df["ubahn_pct"]
+        df = df.sort_values("differenz_pp", ascending=False).reset_index(drop=True)
+    return df
+
+
+def _abstand_m(lat1, lon1, lat2, lon2) -> float:
+    """Abstand in Metern, fuer Berlin genau genug."""
+    import math
+    return math.hypot((lat1 - lat2) * 111_320,
+                      (lon1 - lon2) * 111_320 * math.cos(math.radians(lat1)))
+
+
 def gepaarte_standorte(tram, ubahn, radius_m: float = 300,
                        min_abfahrten: int = MIN_ABFAHRTEN):
     """U-Bahn-Stationen mit einem Tramhalt in Reichweite — der gepaarte Vergleich.
+
+    ── ABGELOEST, 21.08.2026 ────────────────────────────────────────────────
+    Fuer die Karten und die Animation zaehlt jetzt `gemeinsame_standorte()`,
+    das ueber den Namen geht statt ueber den Abstand. Die Begruendung steht
+    dort; kurz: Drei der 24 Paare sind Nachbarhaltestellen und keine
+    Umsteigepunkte, und die Tramseite stand je Ort auf nur einem Bahnsteig.
+    Diese Funktion bleibt fuer die Notebooks stehen, die sie zitieren.
 
     Die gemeinsame Karte hat ein Konfundierungsproblem: Tram und U-Bahn
     bedienen weitgehend verschiedene Stadthaelften, also vergleicht man mit ihr
@@ -623,7 +822,11 @@ def gepaarte_standorte(tram, ubahn, radius_m: float = 300,
     Gleiche Lage, gleiche Fahrgaeste, gleiche Stadtstruktur, gleicher Zeitraum:
     Was uebrig bleibt, ist das Verkehrsmittel.
 
-    Rueckgabe: DataFrame mit einer Zeile je Paar.
+    Rueckgabe: DataFrame mit einer Zeile je Paar. Die Zeile traegt neben den
+    beiden Anteilen auch Koordinaten, Richtungsanteile und Fallzahlen beider
+    Seiten mit — damit netzvergleichskarte_gepaart() dieselbe Zeile zeichnet,
+    die auch in der Tabelle steht, und Karte und Tabelle nicht auseinander
+    laufen koennen.
     """
     import numpy as np
     import pandas as pd
@@ -646,6 +849,14 @@ def gepaarte_standorte(tram, ubahn, radius_m: float = 300,
             "tramhalt": t.loc[i, "stop_name"],
             "tram_pct": t.loc[i, "anteil_ausserhalb"],
             "abstand_m": float(d[i]),
+            "ubahn_lat": station.lat, "ubahn_lon": station.lon,
+            "ubahn_frueh": station.anteil_frueh,
+            "ubahn_spaet": station.anteil_spaet,
+            "ubahn_n": int(station.count),
+            "tram_lat": float(t.loc[i, "lat"]), "tram_lon": float(t.loc[i, "lon"]),
+            "tram_frueh": float(t.loc[i, "anteil_frueh"]),
+            "tram_spaet": float(t.loc[i, "anteil_spaet"]),
+            "tram_n": int(t.loc[i, "count"]),
         })
 
     df = pd.DataFrame(zeilen)
@@ -653,6 +864,129 @@ def gepaarte_standorte(tram, ubahn, radius_m: float = 300,
         df["differenz_pp"] = df["tram_pct"] - df["ubahn_pct"]
         df = df.sort_values("differenz_pp", ascending=False).reset_index(drop=True)
     return df
+
+
+def netzvergleichskarte_gepaart(paare, schwelle_frueh_s: int,
+                                schwelle_spaet_s: int):
+    """Nur die Orte, die sich beide Netze teilen — die Antwort auf Ost gegen West.
+
+    Gleiche Farben, gleiche Kreisstufen, gleiche Legende wie
+    netzvergleichskarte(); der Unterschied ist ausschliesslich die Auswahl.
+    Gezeichnet wird direkt aus dem Ergebnis von `gepaarte_standorte()`, also
+    aus derselben Zeile, die auch in der Tabelle der Szene 9c steht.
+
+    ── Warum diese Fassung neben der vollen existiert ───────────────────────
+    Die volle Karte zeigt 396 Tramhalte gegen 169 U-Bahn-Stationen und damit
+    ueberwiegend zwei benachbarte Gebiete: Tram im Osten, U-Bahn im Westen,
+    Median-Abstand 2,6 km. Wer aus ihr allein schliesst, ist gegen den Einwand
+    "das ist Ost gegen West, nicht Tram gegen U-Bahn" wehrlos. Diese Karte
+    nimmt genau den Einwand vorweg — sie zeigt nur die Standorte, an denen
+    beide Netze denselben Ort bedienen, und dort steht der Unterschied ohne
+    Geografie im Bild.
+
+    ── Die Kreise liegen absichtlich uebereinander ──────────────────────────
+    Viele Paare liegen bei **0 m** Abstand, es ist derselbe Umsteigepunkt. Die
+    beiden Kreise werden nicht auseinandergezogen — verschobene Punkte waeren
+    eine falsche Ortsangabe, und die Ueberlagerung ist hier die Aussage: Der
+    blaue Punkt sitzt im roten, und was rot herausschaut, ist der Abstand
+    zwischen den Netzen an dieser einen Strassenecke.
+
+    Damit das sichtbar bleibt, wird je Paar zuerst der groessere Kreis
+    gezeichnet. Anders als bei der vollen Karte entscheidet das nicht die
+    Ebenenreihenfolge, sondern die Reihenfolge innerhalb einer gemeinsamen
+    Gruppe — bei 24 Paaren ist das ueberschaubar, und an den zwei Paaren, an
+    denen die U-Bahn schlechter ist, liegt dann eben Rot oben.
+
+    ── Verbindungslinie ─────────────────────────────────────────────────────
+    Paare ueber 40 m Abstand bekommen eine duenne Linie. Auf der Uebersicht
+    sieht man sie nicht, beim Hineinzoomen belegt sie, welcher Tramhalt zu
+    welcher Station gehoert. Unter 40 m waere sie kuerzer als die Kreise.
+
+    ── Was hier doppelt sein kann ───────────────────────────────────────────
+    Ein Tramhalt kann der naechste zu zwei U-Bahn-Stationen sein und wird dann
+    zweimal gezeichnet — an derselben Stelle, also unsichtbar. Die Paarzahl in
+    der Legende zaehlt Paare, nicht verschiedene Halte.
+    """
+    import folium
+
+    if paare.empty:
+        raise ValueError("keine gepaarten Standorte — Radius zu klein?")
+
+    gruppe = folium.FeatureGroup(name="gepaarte Standorte", show=True)
+    linien = folium.FeatureGroup(name="Zuordnung", show=True)
+    ecken = []
+
+    for paar in paare.itertuples():
+        if paar.abstand_m > 40:
+            folium.PolyLine(
+                [(paar.tram_lat, paar.tram_lon), (paar.ubahn_lat, paar.ubahn_lon)],
+                color="#90A4AE", weight=2, opacity=0.9, dash_array="4,4",
+            ).add_to(linien)
+
+        kreise = [
+            ("Tram", paar.tramhalt, paar.tram_lat, paar.tram_lon,
+             paar.tram_pct, paar.tram_frueh, paar.tram_spaet, paar.tram_n),
+            ("U-Bahn", paar.station, paar.ubahn_lat, paar.ubahn_lon,
+             paar.ubahn_pct, paar.ubahn_frueh, paar.ubahn_spaet, paar.ubahn_n),
+        ]
+        # Groesserer Kreis zuerst, damit der kleinere nicht darunter verschwindet.
+        #
+        # An zwei Orten reicht das nicht: Warschauer Str. (Tram 2,8 %, U-Bahn
+        # 0,0 %) und Lichtenberg (0,7 % gegen 2,9 %) fallen mit BEIDEN Werten in
+        # dieselbe Groessenstufe, und bei 0 m Abstand deckt der zuletzt
+        # gezeichnete Kreis den ersten exakt ab. Sichtbar ist dort nur ein Netz.
+        # Das bleibt am 21.08.2026 auf Wunsch der Nutzerin so.
+        #
+        # ACHTUNG BEIM ABLESEN: Der sichtbare Kreis ist der mit dem KLEINEREN
+        # Anteil, nicht der schlechtere. An Lichtenberg ist die U-Bahn
+        # tatsaechlich schlechter; an Warschauer Str. ist es die Tram (2,8 %
+        # gegen 0,0 %) — sie liegt nur unter dem blauen Punkt.
+        for netz, name, lat, lon, ausserhalb, frueh, spaet, n in sorted(
+                kreise, key=lambda k: -k[4]):
+            ecken.append((lat, lon))
+            folium.CircleMarker(
+                location=[lat, lon], radius=radius_gestuft(ausserhalb),
+                color="#37474F", weight=1, fill=True,
+                fill_color=FARBE_NETZ[netz], fill_opacity=0.85,
+                tooltip=(f"<b>{name}</b><br>{netz}<br>"
+                         f"außerhalb des Fensters: <b>{ausserhalb:.1f} %</b><br>"
+                         f"davon zu früh: {frueh:.1f} %<br>"
+                         f"davon zu spät: {spaet:.1f} %<br>"
+                         f"n: {n:,}<br>"
+                         f"<i>Paar: {paar.station} ↔ {paar.tramhalt}, "
+                         f"{paar.abstand_m:.0f} m — Differenz "
+                         f"{paar.differenz_pp:+.1f} pp</i>"),
+            ).add_to(gruppe)
+
+    karte = grundkarte()
+    linien.add_to(karte)
+    gruppe.add_to(karte)
+    # Kein fester Zoom: Die Auswahl ist klein und liegt anders als das volle
+    # Netz nicht um die Stadtmitte herum. Der Ausschnitt kommt deshalb aus den
+    # Punkten selbst, sonst haengt die halbe Auswahl ausserhalb des Bildes.
+    karte.fit_bounds(
+        [[min(e[0] for e in ecken), min(e[1] for e in ecken)],
+         [max(e[0] for e in ecken), max(e[1] for e in ecken)]],
+        padding=(60, 60))
+    folium.LayerControl(collapsed=False).add_to(karte)
+
+    schlechter = int((paare["differenz_pp"] > 0).sum())
+    karte.get_root().html.add_child(folium.Element(legende(
+        titel="Dieselbe Straßenecke",
+        bloecke=[
+            ("Farbe — Netz", [(punkt(FARBE_NETZ[n]), n)
+                              for n in ("Tram", "U-Bahn")]),
+            ("Kreisgröße — außerhalb des Pünktlichkeitsfensters",
+             stufen_legende()),
+        ],
+        fuss=(f"Nur die {len(paare)} Standorte, an denen ein Tramhalt denselben "
+              "Bahnhofsnamen trägt wie die U-Bahn-Station; die meisten liegen "
+              f"bei 0 m. An {schlechter} von {len(paare)} ist die Tram "
+              "schlechter. Gleiche Lage, gleicher Zeitraum — was übrig bleibt, "
+              "ist das Verkehrsmittel. "
+              + _fussnote_fenster(schwelle_frueh_s, schwelle_spaet_s)),
+    )))
+    return karte
 
 
 def lsa_statuskarte(stops, schwelle_frueh_s: int, schwelle_spaet_s: int,
@@ -666,8 +1000,8 @@ def lsa_statuskarte(stops, schwelle_frueh_s: int, schwelle_spaet_s: int,
     import folium
 
     daten = stops[stops["count"] >= min_abfahrten].copy()
-    karte = folium.Map(location=[daten["lat"].mean(), daten["lon"].mean()],
-                       zoom_start=zoom, tiles="CartoDB positron")
+    karte = grundkarte(location=[daten["lat"].mean(), daten["lon"].mean()],
+                       zoom_start=zoom)
     gruppen = {
         "aktiv":    folium.FeatureGroup(name="Beeinflussung aktiv", show=True),
         "inaktiv":  folium.FeatureGroup(name="Beeinflussung inaktiv", show=True),

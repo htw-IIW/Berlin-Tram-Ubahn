@@ -3,9 +3,15 @@
 
     python3 scripts/grafik_tagesgang_netze.py
 
-Erzeugt `video/bild/tagesgang_netze.png` (1920×1080): zwei übereinanderliegende
-Felder, oben die Straßenbahn, unten die U-Bahn, dazu die schattierten
+Erzeugt `video/bild/tagesgang_netze.png` (1920×1080): beide Netze als zwei
+Kurven in EINEM Feld auf gemeinsamer Achse, dazu die schattierten
 Hauptverkehrszeiten.
+
+Die gemeinsame Achse ist Absicht. In der Fassung bis zum 19.08.2026 lagen die
+Netze in zwei gestapelten Feldern mit je eigener Skala — die U-Bahn-Kurve
+reichte dort genauso hoch wie die der Tram, obwohl sie sich auf 4,1 statt
+9,9 Prozent bezog. Der Abstand zwischen den Kurven ist die Aussage; getrennte
+Skalen haben ihn weggerechnet.
 
 ── Wozu ────────────────────────────────────────────────────────────────────
 

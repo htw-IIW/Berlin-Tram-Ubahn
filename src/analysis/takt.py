@@ -155,11 +155,30 @@ def takt_je_linie(
 def puenktlichkeit_je_linie(
     es,
     index: str,
-    frueh_schwelle_s: int = -60,
-    spaet_schwelle_s: int = 180,
+    frueh_schwelle_s: int | None = None,
+    spaet_schwelle_s: int | None = None,
     max_linien: int = 30,
 ) -> pd.DataFrame:
-    """Anteil zu früher, pünktlicher und zu später Abfahrten je Linie."""
+    """Anteil zu früher, pünktlicher und zu später Abfahrten je Linie.
+
+    Ohne Angabe gilt das Vertragsfenster des Projekts (−120 s / +240 s).
+
+    Die Vorgabewerte werden bewusst nicht hier festgelegt, sondern aus
+    src/analysis/ aufgeloest: Wer die Funktion ohne Schwellen aufruft, soll
+    dieselben Zahlen bekommen wie jede andere Auswertung des Projekts. Eine
+    eigene Frueh-Schwelle von −60 s ergaebe an dieser Stelle rund 19 % statt
+    rund 10 % Verfruehung — ein Unterschied, der die Maßnahmenrechnung traegt.
+    """
+    # Lokal importiert: VERFRUEHT_SCHWELLE_S liegt in grafiken.py, und dieses
+    # Modul soll sich beim Import nicht plotly mit hereinziehen.
+    from src.analysis.grafiken import VERFRUEHT_SCHWELLE_S
+    from src.analysis.quality import VERSPAETET_SCHWELLE_S
+
+    if frueh_schwelle_s is None:
+        frueh_schwelle_s = VERFRUEHT_SCHWELLE_S
+    if spaet_schwelle_s is None:
+        spaet_schwelle_s = VERSPAETET_SCHWELLE_S
+
     resp = es.search(
         index=index, size=0,
         query={"exists": {"field": "delay_s"}},

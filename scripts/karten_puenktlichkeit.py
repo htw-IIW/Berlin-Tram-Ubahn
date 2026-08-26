@@ -18,6 +18,11 @@ Erzeugt in `video/karten/`:
     lsa_status_tram_frueh120.html
     puenktlichkeitsfenster_ubahn_frueh60.html  zum Vergleich
     puenktlichkeitsfenster_ubahn_frueh120.html
+    netzvergleich_frueh120.html            beide Netze, alle Halte
+    netzvergleich_gepaart_frueh120.html    nur die gemeinsamen Standorte
+
+Die gepaarte Fassung entsteht nur, wenn beide Netze im selben Lauf gerechnet
+werden (`--netz beide`, die Vorgabe) — sie braucht beide Seiten.
 
 Für die U-Bahn gibt es bewusst **keine** LSA-Fassung: Eine U-Bahn steht an
 keiner Ampel. Die Karte dient dem Größenvergleich der Kreise, nicht der
@@ -43,8 +48,8 @@ from config.settings import ES_HOST, ES_PASSWORD, ES_USER      # noqa: E402
 from scipy import stats                                        # noqa: E402
 
 from src.analysis.karten import (                              # noqa: E402
-    anteile_je_haltestelle, gepaarte_standorte, lsa_statuskarte,
-    netzvergleichskarte, zuverlaessigkeitskarte,
+    anteile_je_haltestelle, gemeinsame_standorte, lsa_statuskarte,
+    netzvergleichskarte, netzvergleichskarte_gepaart, zuverlaessigkeitskarte,
 )
 from src.analysis.quality import VERSPAETET_SCHWELLE_S         # noqa: E402
 
@@ -126,20 +131,29 @@ def main() -> int:
         print(f"  geschrieben: {pfad.relative_to(WURZEL)}")
 
         # Der gepaarte Vergleich ist die Absicherung der gemeinsamen Karte
-        # gegen den Einwand "das ist Ost gegen West". Siehe Docstring von
-        # gepaarte_standorte().
-        paare = gepaarte_standorte(tram, ubahn)
+        # gegen den Einwand "das ist Ost gegen West". Seit dem 21.08.2026 über
+        # den Namen statt über 300 m Umkreis — Begründung im Docstring von
+        # gemeinsame_standorte().
+        paare = gemeinsame_standorte(tram, ubahn)
         if paare.empty:
             continue
         d = paare["differenz_pp"]
         w, p = stats.wilcoxon(paare["tram_pct"], paare["ubahn_pct"])
-        print(f"  gepaarte Standorte (Tramhalt unter 300 m): {len(paare)}")
+        print(f"  gemeinsame Standorte (gleicher Bahnhofsname): {len(paare)}")
         print(f"    Median U-Bahn {paare['ubahn_pct'].median():.1f} %, "
               f"Tram {paare['tram_pct'].median():.1f} %")
         print(f"    Median der Paardifferenz: {d.median():+.1f} pp  "
               f"(netzweit {tram['anteil_ausserhalb'].median() - ubahn['anteil_ausserhalb'].median():+.1f} pp)")
         print(f"    Tram schlechter in {(d > 0).sum()} von {len(d)} Paaren, "
               f"Wilcoxon p = {p:.2e}")
+
+        # Dieselbe Karte, aber nur auf den gepaarten Standorten. Eigene Datei
+        # statt einer abschaltbaren Ebene, damit im Schnitt zwischen "alle
+        # Halte" und "nur die gemeinsamen" hart geschnitten werden kann.
+        karte = netzvergleichskarte_gepaart(paare, -abs(frueh), args.spaet)
+        pfad = args.ziel / f"netzvergleich_gepaart_frueh{abs(frueh)}.html"
+        karte.save(str(pfad))
+        print(f"  geschrieben: {pfad.relative_to(WURZEL)}")
 
     return 0
 

@@ -140,7 +140,7 @@ DELAY_CLIP_S = 600
 # dagegen gut überein — Nachweis und Monatsvergleich in
 # scripts/validierung_bvg.py.
 #
-# ACHTUNG, Nebenwirkung: Notebook 06 benutzt die Schwelle als Zielklasse des
+# ACHTUNG, Nebenwirkung: Notebook 05 benutzt die Schwelle als Zielklasse des
 # Vorhersagemodells (df["verspaetet"]). Die Klasse wird dadurch kleiner und
 # damit unbalancierter; Trefferquoten des Modells sind mit älteren Läufen nicht
 # vergleichbar.
@@ -265,6 +265,27 @@ def analysefenster_query(
     if fremdlinien_ausschliessen:
         darf_nicht.append({"terms": {"line_name": list(FREMDLINIEN)}})
     return {"bool": {"must": muss, "must_not": darf_nicht}}
+
+
+def werktagsfilter(feld: str = "planned_when") -> dict:
+    """Nur Montag bis Freitag — als Elasticsearch-Bedingung.
+
+    Die Werktagsregel gilt im Projekt überall dort, wo tageweise geladen wird:
+    `lade_fahrten()` und `segmente_gesamtzeitraum()` sieben die Wochenenden in
+    Python aus. Für eine reine Aggregation über den ganzen Index gab es die
+    Regel bisher nicht, und wer nur aggregiert, hatte die Wochenenden
+    unbemerkt mit drin.
+
+    Benutzt das abgeleitete Feld `day_of_week` (0 = Montag … 6 = Sonntag,
+    DATASET.md), dieselbe Bedingung wie in `lade_fahrten()`. Der Parameter
+    `feld` wird deshalb nicht ausgewertet und steht nur da, damit die Funktion
+    dieselbe Form hat wie die anderen Filter dieses Moduls.
+
+    Eine Skriptbedingung auf `planned_when` täte dasselbe, kostet auf dem Pi
+    aber rund zwölf Sekunden über den vollen Tram-Index. Das Feld ist zur
+    Indexzeit berechnet und kostet nichts.
+    """
+    return {"range": {"day_of_week": {"lte": 4}}}
 
 
 def sauberes_ausfallfenster_query(feld: str = "planned_when") -> dict:

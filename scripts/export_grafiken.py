@@ -74,18 +74,16 @@ NOTEBOOKS = [
     "03_lsa_analyse.ipynb",
     "04_hypothesen.ipynb",
     "04_delay_propagation.ipynb",
-    "05_kosten.ipynb",
-    "06_entscheidungshilfe.ipynb",
+    "05_massnahmen.ipynb",
 ]
 
 # Storyboard-Szene -> (Notebook, Suchbegriff in Titel/Achsen/Annotationen).
 # Der Suchbegriff wird klein geschrieben verglichen; der erste Treffer gewinnt.
 SZENEN = {
+    # Boxplot statt Balken: Bei sechs belegten inaktiven Anlagen muss die
+    # Gruppengröße mit im Bild stehen, sonst liest man den Median als sicherer,
+    # als er ist. Die Balkenfassung derselben Zahlen gibt es deshalb nicht mehr.
     "szene3_lsa_gruppen":      ("03_lsa_analyse", "erzeugte verspätung im zulauf"),
-    # Balkenfassung derselben Aussage — lesbarer im Video, weil kein
-    # Quartilsverständnis nötig ist. Selektor über den Achsentitel, weil der
-    # Diagrammtitel identisch zur gekürzten Boxplot-Fassung ist.
-    "szene3b_lsa_balken":      ("03_lsa_analyse", "median erzeugte verspätung"),
     # Beantwortet die Frage, warum man auf der LSA-Karte keine Ursache sieht:
     # mittlere und erzeugte Verspätung hängen kaum zusammen.
     "szene3c_erben_erzeugen":  ("03_lsa_analyse", "heißt nicht, dass sie dort entsteht"),
@@ -102,35 +100,29 @@ SZENEN = {
     "richtungen_frueh_spaet":  ("01_eda", "in beide richtungen häufiger ab"),
     "szene6_konzentration":    ("04_delay_propagation", "anteil der abschnitte"),
     "szene6b_ueberlappung":    ("02_eda", "netze überlappen"),
-    "szene7_massnahmen":       ("06_entscheidungshilfe", "personenstunden"),
-    "szene7b_tunnelmeter":     ("05_kosten", "meter neubaustrecke"),
-    "szene8_stoerungen":       ("05_kosten", "aufzüge"),
-    "szene9_baukosten":        ("05_kosten", "mio. € je km"),
+    "szene7_massnahmen":       ("05_massnahmen", "personenstunden"),
 }
 
 # Optional, für die im Audit vorgeschlagenen Ergänzungen.
 KUER = {
     "extra_n_inflation":        ("04_hypothesen", "stichprobe"),
-    "extra_jahreszeit":         ("01_eda", "witterungskritische"),
     "extra_collector_ausfall":  ("01_eda", "erhebungsvolumen"),
-    "extra_modell_guete":       ("06_entscheidungshilfe", "vorhergesagte wahrscheinlichkeit"),
-    "extra_entscheidungshilfe": ("06_entscheidungshilfe", "verspätungsrisiko nach linie"),
+    "extra_modell_guete":       ("05_massnahmen", "vorhergesagte wahrscheinlichkeit"),
+    "extra_entscheidungshilfe": ("05_massnahmen", "verspätungsrisiko nach linie"),
 }
 
 # Rückhand für die Fragerunde: Diagramme, die eine absehbare Nachfrage
 # beantworten oder eine Szene notfalls ersetzen können. Landen in
 # video/bild/reserve/. Alles andere bleibt im Notebook — dort steht es im
 # Zusammenhang, und im Schnittprogramm wäre es nur Ballast.
+# Dass der LSA-Befund spezifisch für die Fahrzeit ist und sich nicht im Ausfall
+# zeigt, steht als Rechnung und Ergebnis in Notebook 03, Abschnitt 4d, Teil 2 —
+# eine eigene Grafik dafür gibt es nicht, die Zahlen genügen für die Nachfrage.
 RESERVE = {
     "schwellenabstand":     ("01_eda", "je schwelle"),
     "takt_und_verfruehung": ("01_eda", "verfrühungsrate, takt"),
-    # Verspätung ja, Ausfall nein — belegt, dass der Befund aus 4d spezifisch
-    # ist. Titel geändert am 05.08.2026, als die Alexanderplatz-Gruppe entfiel.
-    "lsa_dissoziation":     ("03_lsa_analyse", "nicht im ausfall"),
     "top_abschnitte":       ("04_delay_propagation", "größten netzweiten wirkung"),
     "lage_statt_trasse":    ("04_hypothesen", "sondern die lage im netz"),
-    "zeitverlust_spanne":   ("05_kosten", "sensitivität der annahmen"),
-    "tageszeit_geprueft":   ("05_kosten", "proportional zum fahrtenangebot"),
 }
 
 
